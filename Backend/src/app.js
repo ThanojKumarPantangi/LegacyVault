@@ -19,6 +19,8 @@ import accessRequestRoutes from "./routes/accessRequestRoutes.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 // Security Middlewares
 app.use(helmet());
 
