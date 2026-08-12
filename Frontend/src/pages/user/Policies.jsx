@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import {
   fetchPolicies,
   createPolicy,
@@ -36,6 +37,8 @@ const Policies = () => {
   const [selectedAssets, setSelectedAssets] = useState([]);
   const [adminApprovalRequired, setAdminApprovalRequired] = useState(true);
   const [formErrors, setFormErrors] = useState({});
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     dispatch(fetchPolicies());
@@ -150,7 +153,7 @@ const Policies = () => {
           description="Inheritance policies link secure assets to a specific nominee appointee. You need to register at least one nominee before you can set up policies."
           icon={Users}
           actionText="Add a Nominee"
-          onAction={() => window.location.assign("/user/nominees")}
+          onAction={() => navigate("/user/nominees")}
         />
       ) : loading && policies.length === 0 ? (
         <div className="flex justify-center py-12">

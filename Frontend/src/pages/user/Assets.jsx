@@ -18,6 +18,7 @@ import EmptyState from "../../components/common/EmptyState.jsx";
 import Spinner from "../../components/common/Spinner.jsx";
 import Badge from "../../components/common/Badge.jsx";
 import { FolderLock, Plus, FileText, Download, Eye, Trash2, Calendar, FileBox } from "lucide-react";
+import apiClient from "../../services/apiClient.js";
 
 const CATEGORIES = [
   { value: "BANK_ACCOUNT", label: "Bank Account Credentials" },
@@ -106,24 +107,31 @@ const Assets = () => {
 
   const handleDownloadFile = async (assetId, originalName) => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`http://localhost:5000/api/assets/${assetId}/file`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: "blob",
-      });
-      const blob = new Blob([res.data], { type: res.headers["content-type"] });
-      const url = window.URL.createObjectURL(blob);
+      const res = await apiClient.get(
+        `/assets/${assetId}/file`,
+        {
+          responseType: "blob",
+        }
+      );
+
+      const url = window.URL.createObjectURL(res.data);
+
       const link = document.createElement("a");
       link.href = url;
       link.setAttribute("download", originalName);
+
       document.body.appendChild(link);
       link.click();
-      link.parentNode.removeChild(link);
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert("Failed to download decrypted file. Unauthorized or file corrupted.");
+      alert(
+        "Failed to download decrypted file. Unauthorized or file corrupted."
+      );
     }
   };
-
+  
   return (
     <div>
       <PageHeader
@@ -249,12 +257,53 @@ const Assets = () => {
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Upload Confidential File (Encrypted)
             </label>
-            <div className="w-full flex items-center justify-center border border-slate-700 rounded-lg p-4 bg-slate-900">
-              <input
-                type="file"
-                onChange={(e) => setFile(e.target.files[0])}
-                className="text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white file:hover:bg-blue-500 cursor-pointer"
-              />
+
+            <div className="w-full border border-slate-700 rounded-lg p-4 bg-slate-900">
+              {!file ? (
+                <div className="flex flex-col items-center justify-center">
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={(e) => {
+                      const selectedFile = e.target.files?.[0] || null;
+                      setFile(selectedFile);
+                    }}
+                    className="text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white file:hover:bg-blue-500 cursor-pointer"
+                  />
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    Supported: PDF, JPG, JPEG, PNG, WebP
+                  </p>
+
+                  <p className="text-xs text-slate-500">
+                    Maximum size: 40 MB
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FileText className="w-5 h-5 text-blue-400 shrink-0" />
+
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-200 truncate">
+                        {file.name}
+                      </p>
+
+                      <p className="text-xs text-slate-500">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setFile(null)}
+                    className="shrink-0 px-3 py-1.5 text-xs font-medium text-red-400 border border-red-500/30 rounded-md hover:bg-red-500/10 transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

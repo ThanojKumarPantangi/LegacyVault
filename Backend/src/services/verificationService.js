@@ -428,6 +428,7 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
  */
 export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
   const nominees = await Nominee.find({ nomineeUserId });
+
   const nomineeIds = nominees.map((n) => n._id.toString());
 
   // Access check
@@ -438,21 +439,33 @@ export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
   });
 
   if (!request) {
-    const err = new Error("Access denied. No approved request found for this file.");
+    const err = new Error(
+      "Access denied. No approved request found for this file."
+    );
     err.statusCode = 403;
     err.errorCode = "ACCESS_DENIED";
     throw err;
   }
 
   const asset = await Asset.findById(assetId);
-  if (!asset || !asset.fileMetadata || !asset.fileMetadata.filename) {
+
+  if (
+    !asset ||
+    !asset.fileMetadata ||
+    !asset.fileMetadata.filename
+  ) {
     const err = new Error("No file associated with this asset");
     err.statusCode = 404;
     err.errorCode = "FILE_NOT_FOUND";
     throw err;
   }
 
-  const encryptedBuffer = await getFile(asset.fileMetadata.filename);
+  // Get encrypted file from Supabase Storage
+  const encryptedBuffer = await getFile(
+    asset.fileMetadata.filename
+  );
+
+  // Decrypt file in backend
   const decryptedBuffer = decryptBuffer(
     encryptedBuffer,
     asset.fileMetadata.iv,
@@ -465,7 +478,10 @@ export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
     action: "ASSET_DOWNLOADED",
     resourceType: "Asset",
     resourceId: asset._id,
-    metadata: { nomineeId: request.nomineeId, accessRequestId: request._id },
+    metadata: {
+      nomineeId: request.nomineeId,
+      accessRequestId: request._id,
+    },
   });
 
   return {

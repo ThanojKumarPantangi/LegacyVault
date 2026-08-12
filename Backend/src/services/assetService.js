@@ -1,11 +1,24 @@
 import { Asset } from "../models/Asset.js";
-import { encrypt, decrypt, encryptBuffer, decryptBuffer } from "./encryptionService.js";
-import { saveFile, getFile, deleteFile } from "./storageService.js";
+import {
+  encrypt,
+  decrypt,
+  encryptBuffer,
+  decryptBuffer,
+} from "./encryptionService.js";
+import {
+  saveFile,
+  getFile,
+  deleteFile,
+} from "./storageService.js";
 
 /**
  * Creates a digital asset, encrypting sensitive fields and file attachments.
  */
-export const createAsset = async (ownerId, { title, category, description, sensitiveData }, file) => {
+export const createAsset = async (
+  ownerId,
+  { title, category, description, sensitiveData },
+  file
+) => {
   let encryptedData = undefined;
   let fileMetadata = undefined;
 
@@ -17,14 +30,24 @@ export const createAsset = async (ownerId, { title, category, description, sensi
   // Encrypt and save file if present
   if (file) {
     const fileResult = encryptBuffer(file.buffer);
-    const diskFilename = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    await saveFile(diskFilename, fileResult.encryptedBuffer);
+
+    // Unique filename/path for Supabase Storage
+    const storageFilename = `${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    // Save encrypted file to Supabase Storage
+    await saveFile(
+      storageFilename,
+      fileResult.encryptedBuffer,
+      file.mimetype
+    );
 
     fileMetadata = {
       originalName: file.originalname,
       mimeType: file.mimetype,
       size: file.size,
-      filename: diskFilename,
+      filename: storageFilename,
       iv: fileResult.iv,
       tag: fileResult.tag,
     };
@@ -41,31 +64,45 @@ export const createAsset = async (ownerId, { title, category, description, sensi
   });
 
   await asset.save();
+
   return asset;
 };
 
 /**
- * Retrieves all assets owned by a specific user (does not decrypt sensitive fields).
+ * Retrieves all assets owned by a specific user.
+ * Does not decrypt sensitive fields.
  */
 export const getAssetsByOwner = async (ownerId) => {
   return await Asset.find({ ownerId });
 };
 
 /**
- * Retrieves a single asset and decrypts its sensitive data (verifies ownerId).
+ * Retrieves a single asset and decrypts its sensitive data.
+ * Verifies ownerId.
  */
 export const getAssetById = async (ownerId, assetId) => {
-  const asset = await Asset.findOne({ _id: assetId, ownerId });
+  const asset = await Asset.findOne({
+    _id: assetId,
+    ownerId,
+  });
+
   if (!asset) {
-    const err = new Error("Asset not found or unauthorized");
+    const err = new Error(
+      "Asset not found or unauthorized"
+    );
+
     err.statusCode = 404;
     err.errorCode = "ASSET_NOT_FOUND";
+
     throw err;
   }
 
   const assetObj = asset.toObject();
 
-  if (assetObj.encryptedData && assetObj.encryptedData.ciphertext) {
+  if (
+    assetObj.encryptedData &&
+    assetObj.encryptedData.ciphertext
+  ) {
     assetObj.sensitiveData = decrypt(
       assetObj.encryptedData.ciphertext,
       assetObj.encryptedData.iv,
@@ -77,69 +114,139 @@ export const getAssetById = async (ownerId, assetId) => {
 };
 
 /**
- * Updates an asset. Re-encrypts text data if provided.
+ * Updates an asset.
+ * Re-encrypts text data if provided.
  */
-export const updateAsset = async (ownerId, assetId, { title, category, description, sensitiveData }) => {
-  const asset = await Asset.findOne({ _id: assetId, ownerId });
+export const updateAsset = async (
+  ownerId,
+  assetId,
+  {
+    title,
+    category,
+    description,
+    sensitiveData,
+  }
+) => {
+  const asset = await Asset.findOne({
+    _id: assetId,
+    ownerId,
+  });
+
   if (!asset) {
-    const err = new Error("Asset not found or unauthorized");
+    const err = new Error(
+      "Asset not found or unauthorized"
+    );
+
     err.statusCode = 404;
     err.errorCode = "ASSET_NOT_FOUND";
+
     throw err;
   }
 
-  if (title) asset.title = title;
-  if (category) asset.category = category;
-  if (description !== undefined) asset.description = description;
+  if (title) {
+    asset.title = title;
+  }
+
+  if (category) {
+    asset.category = category;
+  }
+
+  if (description !== undefined) {
+    asset.description = description;
+  }
 
   if (sensitiveData) {
     asset.encryptedData = encrypt(sensitiveData);
   }
 
   await asset.save();
+
   return asset;
 };
 
 /**
- * Deletes an asset, removing its files from disk.
+ * Deletes an asset and its associated file
+ * from Supabase Storage.
  */
-export const deleteAsset = async (ownerId, assetId) => {
-  const asset = await Asset.findOne({ _id: assetId, ownerId });
+export const deleteAsset = async (
+  ownerId,
+  assetId
+) => {
+  const asset = await Asset.findOne({
+    _id: assetId,
+    ownerId,
+  });
+
   if (!asset) {
-    const err = new Error("Asset not found or unauthorized");
+    const err = new Error(
+      "Asset not found or unauthorized"
+    );
+
     err.statusCode = 404;
     err.errorCode = "ASSET_NOT_FOUND";
+
     throw err;
   }
 
-  if (asset.fileMetadata && asset.fileMetadata.filename) {
-    await deleteFile(asset.fileMetadata.filename);
+  // Delete associated file from Supabase Storage
+  if (
+    asset.fileMetadata &&
+    asset.fileMetadata.filename
+  ) {
+    await deleteFile(
+      asset.fileMetadata.filename
+    );
   }
 
   await asset.deleteOne();
+
   return { success: true };
 };
 
 /**
- * Retrieves and decrypts the file associated with the asset for the owner.
+ * Retrieves and decrypts the file associated
+ * with the asset for the owner.
  */
-export const getAssetFile = async (ownerId, assetId) => {
-  const asset = await Asset.findOne({ _id: assetId, ownerId });
+export const getAssetFile = async (
+  ownerId,
+  assetId
+) => {
+  const asset = await Asset.findOne({
+    _id: assetId,
+    ownerId,
+  });
+
   if (!asset) {
-    const err = new Error("Asset not found or unauthorized");
+    const err = new Error(
+      "Asset not found or unauthorized"
+    );
+
     err.statusCode = 404;
     err.errorCode = "ASSET_NOT_FOUND";
+
     throw err;
   }
 
-  if (!asset.fileMetadata || !asset.fileMetadata.filename) {
-    const err = new Error("No file attached to this asset");
+  if (
+    !asset.fileMetadata ||
+    !asset.fileMetadata.filename
+  ) {
+    const err = new Error(
+      "No file attached to this asset"
+    );
+
     err.statusCode = 400;
     err.errorCode = "NO_FILE_ATTACHED";
+
     throw err;
   }
 
-  const encryptedBuffer = await getFile(asset.fileMetadata.filename);
+  // Download encrypted file from Supabase Storage
+  const encryptedBuffer = await getFile(
+    asset.fileMetadata.filename
+  );
+
+  // Decrypt file in backend
   const decryptedBuffer = decryptBuffer(
     encryptedBuffer,
     asset.fileMetadata.iv,
@@ -148,7 +255,9 @@ export const getAssetFile = async (ownerId, assetId) => {
 
   return {
     buffer: decryptedBuffer,
-    originalName: asset.fileMetadata.originalName,
-    mimeType: asset.fileMetadata.mimeType,
+    originalName:
+      asset.fileMetadata.originalName,
+    mimeType:
+      asset.fileMetadata.mimeType,
   };
 };

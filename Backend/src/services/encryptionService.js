@@ -6,7 +6,7 @@ const IV_LENGTH = 12;
 
 // Centralized key derivation to guarantee a 32-byte key
 const getEncryptionKey = () => {
-  const rawKey = env.ENCRYPTION_KEY || "default_encryption_key_32_bytes_length";
+  const rawKey = env.ENCRYPTION_KEY;
   return crypto.createHash("sha256").update(rawKey).digest();
 };
 

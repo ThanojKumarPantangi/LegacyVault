@@ -5,6 +5,7 @@ import Badge from "../../components/common/Badge.jsx";
 import Spinner from "../../components/common/Spinner.jsx";
 import EmptyState from "../../components/common/EmptyState.jsx";
 import { ShieldAlert, AlertTriangle, Calendar, Users, FolderLock } from "lucide-react";
+import apiClient from "../../services/apiClient.js";
 
 const AccessRequests = () => {
   const [requests, setRequests] = useState([]);
@@ -14,11 +15,7 @@ const AccessRequests = () => {
   const fetchUserRequests = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
-      // Use client endpoint to fetch access requests targeting this user's assets
-      const response = await axios.get("http://localhost:5000/api/access-requests", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await apiClient.get("/access-requests");
       // Filter requests or show them
       setRequests(response.data.data || []);
       setError(null);

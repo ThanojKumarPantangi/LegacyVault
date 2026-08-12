@@ -26,7 +26,14 @@ apiClient.interceptors.request.use(
 // Response interceptor for error normalization
 apiClient.interceptors.response.use(
   (response) => {
-    return response.data; // Directly return the success response body
+    if (
+      response.config.responseType &&
+      response.config.responseType !== "json"
+    ) {
+      return response;
+    }
+
+    return response.data;
   },
   (error) => {
     // Normalize error shape

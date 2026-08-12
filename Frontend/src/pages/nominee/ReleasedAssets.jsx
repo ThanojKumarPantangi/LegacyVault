@@ -13,6 +13,7 @@ import EmptyState from "../../components/common/EmptyState.jsx";
 import Spinner from "../../components/common/Spinner.jsx";
 import Badge from "../../components/common/Badge.jsx";
 import { KeyRound, Eye, Download, FileText, Calendar, ShieldCheck, FileBox } from "lucide-react";
+import apiClient from "../../services/apiClient.js";
 
 const ReleasedAssets = () => {
   const dispatch = useDispatch();
@@ -46,21 +47,28 @@ const ReleasedAssets = () => {
 
   const handleDownloadFile = async (assetId, originalName) => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`http://localhost:5000/api/verification/released/${assetId}/file`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: "blob",
-      });
-      const blob = new Blob([res.data], { type: res.headers["content-type"] });
-      const url = window.URL.createObjectURL(blob);
+      const res = await apiClient.get(
+        `/verification/released/${assetId}/file`,
+        {
+          responseType: "blob",
+        }
+      );
+
+      const url = window.URL.createObjectURL(res.data);
+
       const link = document.createElement("a");
       link.href = url;
       link.setAttribute("download", originalName);
+
       document.body.appendChild(link);
       link.click();
-      link.parentNode.removeChild(link);
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert("Failed to download decrypted file. Unauthorized or file corrupted.");
+      alert(
+        "Failed to download decrypted file. Unauthorized or file corrupted."
+      );
     }
   };
 
