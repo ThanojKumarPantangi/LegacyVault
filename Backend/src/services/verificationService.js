@@ -353,15 +353,17 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
   const nominees = await Nominee.find({ nomineeUserId });
   const nomineeIds = nominees.map((n) => n._id.toString());
 
-  // Confirm approved AccessRequest exists for this nominee list and asset
+  // Confirm approved or already-released AccessRequest exists
   const request = await AccessRequest.findOne({
     nomineeId: { $in: nomineeIds },
     assetId,
-    status: "APPROVED",
+    status: { $in: ["APPROVED", "RELEASED"] },
   });
 
   if (!request) {
-    const err = new Error("Access denied. No approved request found for this asset.");
+    const err = new Error(
+      "Access denied. No approved request found for this asset."
+    );
     err.statusCode = 403;
     err.errorCode = "ACCESS_DENIED";
     throw err;
@@ -369,6 +371,7 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
 
   // Fetch asset and verify owner link
   const asset = await Asset.findById(assetId);
+
   if (!asset || asset.ownerId.toString() !== request.ownerId.toString()) {
     const err = new Error("Asset mismatch or corrupted policy");
     err.statusCode = 400;
@@ -387,27 +390,35 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
     );
   }
 
-  // Update AccessRequest status to RELEASED
-  request.status = "RELEASED";
-  request.releasedAt = new Date();
-  await request.save();
+  // Mark as RELEASED only on the first successful release
+  if (request.status === "APPROVED") {
+    request.status = "RELEASED";
+    request.releasedAt = new Date();
+    await request.save();
 
-  // Update VerificationCase
-  const vCase = await VerificationCase.findById(request.verificationCaseId);
-  if (vCase && vCase.status !== "RELEASED") {
-    vCase.status = "RELEASED";
-    vCase.completedAt = new Date();
-    await vCase.save();
+    // Update VerificationCase only on first release
+    const vCase = await VerificationCase.findById(
+      request.verificationCaseId
+    );
+
+    if (vCase && vCase.status !== "RELEASED") {
+      vCase.status = "RELEASED";
+      vCase.completedAt = new Date();
+      await vCase.save();
+    }
+
+    // Audit only when the asset is initially released
+    await logAuditEvent({
+      actorId: nomineeUserId,
+      action: "ASSET_RELEASED",
+      resourceType: "Asset",
+      resourceId: asset._id,
+      metadata: {
+        nomineeId: request.nomineeId,
+        accessRequestId: request._id,
+      },
+    });
   }
-
-  // Audit log
-  await logAuditEvent({
-    actorId: nomineeUserId,
-    action: "ASSET_RELEASED",
-    resourceType: "Asset",
-    resourceId: asset._id,
-    metadata: { nomineeId: request.nomineeId, accessRequestId: request._id },
-  });
 
   return assetObj;
 };

@@ -112,9 +112,12 @@ const VerificationRequests = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-250">{req.assetId?.title}</div>
+                      <div className="font-semibold text-slate-250">
+                        {req.assetId?.title || "Unknown Asset"}
+                      </div>
+
                       <div className="text-xs text-slate-500 mt-0.5">
-                        {req.assetId?.category.replace("_", " ")}
+                        {req.assetId?.category?.replace(/_/g, " ") || "Unknown Category"}
                       </div>
                     </td>
                     <td className="px-6 py-4">
