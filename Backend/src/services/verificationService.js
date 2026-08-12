@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { User } from "../models/User.js";
 import { Policy } from "../models/Policy.js";
 import { Nominee } from "../models/Nominee.js";
@@ -7,6 +8,11 @@ import { AccessRequest } from "../models/AccessRequest.js";
 import { decrypt, decryptBuffer } from "./encryptionService.js";
 import { getFile } from "./storageService.js";
 import {
+  sendOwnerAvailabilityCheck,
+  sendOwnerAvailableConfirmation,
+  sendNomineeAvailabilityCheck,
+  sendNomineeOwnerAvailableNotification,
+  sendAssetReleaseNotification,
   sendNomineeNotification,
   sendAccessRequestedNotification,
   sendAccessApprovedNotification,
@@ -14,100 +20,353 @@ import {
 } from "./notificationService.js";
 import { logAuditEvent } from "./auditService.js";
 
+const hashToken = (token) => {
+  return crypto.createHash("sha256").update(token).digest("hex");
+};
+
+/**
+ * Idempotently authorize assets assigned to a nominee inside a policy
+ */
+export const authorizeAssetReleaseForCase = async (vCase) => {
+  try {
+    const policy = await Policy.findById(vCase.policyId).populate("nomineeId ownerId");
+    if (!policy) return;
+
+    // Strict validation: Nominee must exist and belong to the correct owner
+    const nominee = await Nominee.findById(vCase.nomineeId);
+    if (!nominee || nominee.ownerId.toString() !== vCase.ownerId.toString()) {
+      console.warn(`[AUTHORIZATION DENIED] Nominee ${vCase.nomineeId} does not belong to owner ${vCase.ownerId}`);
+      return;
+    }
+
+    const assets = policy.assets || [];
+    let allSucceeded = true;
+
+    for (const assetId of assets) {
+      // Validate asset exists and belongs to the owner
+      const asset = await Asset.findOne({ _id: assetId, ownerId: vCase.ownerId });
+      if (!asset) {
+        allSucceeded = false;
+        console.warn(`[AUTHORIZATION FAILED] Asset ${assetId} not found or does not belong to owner ${vCase.ownerId}`);
+        continue;
+      }
+
+      // Idempotently upsert/approve the AccessRequest matching case, nominee, and asset
+      try {
+        await AccessRequest.findOneAndUpdate(
+          {
+            verificationCaseId: vCase._id,
+            nomineeId: vCase.nomineeId,
+            assetId: assetId
+          },
+          {
+            $setOnInsert: {
+              ownerId: vCase.ownerId,
+              verificationCaseId: vCase._id,
+              nomineeId: vCase.nomineeId,
+              assetId: assetId,
+            },
+            $set: {
+              status: "APPROVED"
+            }
+          },
+          { upsert: true, returnDocument: "after", runValidators: true }
+        );
+      } catch (dbErr) {
+        allSucceeded = false;
+        console.error("Database error during AccessRequest upsert:", dbErr.message);
+      }
+    }
+
+    // Only transition and notify if authorization succeeded for ALL assets
+    if (allSucceeded && assets.length > 0) {
+      // Transition from ASSET_RELEASE_AUTHORIZED to RELEASED conditionally
+      const finalizedCase = await VerificationCase.findOneAndUpdate(
+        { _id: vCase._id, status: "ASSET_RELEASE_AUTHORIZED" },
+        {
+          $set: {
+            status: "RELEASED",
+            completedAt: new Date()
+          },
+          $unset: {
+            ownerTokenHash: 1,
+            ownerResponseDeadline: 1,
+            nomineeTokenHash: 1,
+            nomineeResponseDeadline: 1
+          }
+        },
+        { returnDocument: "after" }
+      );
+
+      if (finalizedCase) {
+        await logAuditEvent({
+          action: "ASSET_RELEASE_AUTHORIZED",
+          resourceType: "VerificationCase",
+          resourceId: vCase._id,
+          metadata: { nomineeId: vCase.nomineeId }
+        });
+
+        // Mark policy as COMPLETED to prevent any future inactivity triggers
+        policy.status = "COMPLETED";
+        await policy.save();
+
+        await logAuditEvent({
+          action: "POLICY_COMPLETED",
+          resourceType: "Policy",
+          resourceId: policy._id,
+          metadata: { ownerId: vCase.ownerId }
+        });
+
+        // Send release notification email once
+        if (!finalizedCase.releaseNotificationSentAt && policy.nomineeId) {
+          try {
+            await sendAssetReleaseNotification(policy.nomineeId.email, policy.nomineeId.name);
+            finalizedCase.releaseNotificationSentAt = new Date();
+            await finalizedCase.save();
+          } catch (emailErr) {
+            console.error("Failed to send release email:", emailErr.message);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[AUTHORIZATION EXCEPTION]:", err.message);
+  }
+};
+
 /**
  * Scheduled job logic checking user inactivity.
  */
 export const processInactiveUsers = async () => {
-  const users = await User.find({ role: "USER" });
   let triggeredCount = 0;
 
-  for (const user of users) {
-    // Find all active policies for this owner
-    const policies = await Policy.find({ ownerId: user._id, status: "ACTIVE" });
-    if (policies.length === 0) continue;
+  // 1. Scan policies where status is "ACTIVE"
+  const policies = await Policy.find({ status: "ACTIVE" }).populate("nomineeId");
 
-    const timeDiffMs = Date.now() - new Date(user.lastActiveAt).getTime();
+  for (const policy of policies) {
+    const owner = await User.findOne({ _id: policy.ownerId, role: "USER" });
+    if (!owner) continue;
+
+    const inactivityDays = policy.inactivityDays || 30;
+    const timeDiffMs = Date.now() - new Date(owner.lastActiveAt).getTime();
     const timeDiffDays = timeDiffMs / (1000 * 60 * 60 * 24);
 
-    for (const policy of policies) {
-      if (timeDiffDays >= policy.inactivityDays) {
-        // Inactivity period met. Check if verification case already exists
-        const existingCase = await VerificationCase.findOne({
-          ownerId: user._id,
-          status: { $in: ["VERIFICATION_REQUIRED", "NOMINEE_REQUESTED", "ADMIN_REVIEW", "APPROVED", "RELEASED"] },
+    if (timeDiffDays >= inactivityDays) {
+      // Check if an active case exists for this policy.
+      // Active states are ONLY: OWNER_CONFIRMATION_PENDING, NOMINEE_CONFIRMATION_PENDING, ASSET_RELEASE_AUTHORIZED
+      const existingCase = await VerificationCase.findOne({
+        policyId: policy._id,
+        status: { $in: ["OWNER_CONFIRMATION_PENDING", "NOMINEE_CONFIRMATION_PENDING", "ASSET_RELEASE_AUTHORIZED"] }
+      });
+
+      if (!existingCase) {
+        // Trigger new verification case
+        const rawOwnerToken = crypto.randomBytes(32).toString("hex");
+        const ownerTokenHash = hashToken(rawOwnerToken);
+        const ownerResponseDays = policy.ownerResponseDays || 3;
+        const ownerResponseDeadline = new Date(Date.now() + ownerResponseDays * 24 * 60 * 60 * 1000);
+
+        const vCase = new VerificationCase({
+          ownerId: owner._id,
+          policyId: policy._id,
+          nomineeId: policy.nomineeId._id,
+          status: "OWNER_CONFIRMATION_PENDING",
+          ownerTokenHash,
+          ownerResponseDeadline,
+          metadata: {
+            inactivityDays,
+            lastActiveAt: owner.lastActiveAt,
+          }
         });
 
-        if (!existingCase) {
-          // Trigger new verification case
-          const vCase = new VerificationCase({
-            ownerId: user._id,
-            status: "VERIFICATION_REQUIRED",
-            triggerType: "INACTIVITY",
-            metadata: {
-              inactivityDays: policy.inactivityDays,
-              lastActiveAt: user.lastActiveAt,
-            },
-          });
+        try {
           await vCase.save();
           triggeredCount++;
 
-          // Notify nominee
-          const nominee = await Nominee.findById(policy.nomineeId);
-          if (nominee) {
-            await sendNomineeNotification(
-              nominee.email,
-              nominee.name,
-              user.name,
-              policy.inactivityDays
-            );
-          }
-
-          // Audit log
           await logAuditEvent({
-            action: "VERIFICATION_STARTED",
+            action: "INACTIVITY_DETECTED",
             resourceType: "VerificationCase",
             resourceId: vCase._id,
-            metadata: { ownerId: user._id, policyId: policy._id },
+            metadata: { ownerId: owner._id, policyId: policy._id }
           });
+
+          // Send availability email only to owner
+          const respondUrl = `${process.env.CLIENT_URL || "http://localhost:5173"}/verify-respond?token=${rawOwnerToken}&type=owner`;
+          await sendOwnerAvailabilityCheck(owner.email, owner.name, respondUrl);
+          vCase.ownerAvailabilityEmailSentAt = new Date();
+          await vCase.save();
+
+          await logAuditEvent({
+            action: "OWNER_AVAILABILITY_EMAIL_SENT",
+            resourceType: "VerificationCase",
+            resourceId: vCase._id,
+            metadata: { ownerId: owner._id }
+          });
+        } catch (saveErr) {
+          console.error("Failed to start owner verification:", saveErr.message);
         }
       }
     }
   }
 
-  return { processed: users.length, triggered: triggeredCount };
+  // 2. Process active cases that need transitions
+  // A. Check Owner Response Deadlines
+  const ownerPendingCases = await VerificationCase.find({
+    status: "OWNER_CONFIRMATION_PENDING",
+    ownerResponseDeadline: { $lte: new Date() }
+  });
+
+  for (const vCase of ownerPendingCases) {
+    const policy = await Policy.findById(vCase.policyId).populate("nomineeId ownerId");
+    if (!policy) continue;
+
+    const nominee = policy.nomineeId;
+    if (!nominee) continue;
+
+    const rawNomineeToken = crypto.randomBytes(32).toString("hex");
+    const nomineeTokenHash = hashToken(rawNomineeToken);
+    const nomineeResponseDays = policy.nomineeResponseDays || 7;
+    const nomineeResponseDeadline = new Date(Date.now() + nomineeResponseDays * 24 * 60 * 60 * 1000);
+
+    // Atomically transition status using previous state validation
+    const updatedCase = await VerificationCase.findOneAndUpdate(
+      { _id: vCase._id, status: "OWNER_CONFIRMATION_PENDING" },
+      {
+        $set: {
+          status: "NOMINEE_CONFIRMATION_PENDING",
+          nomineeTokenHash,
+          nomineeResponseDeadline,
+        },
+        $unset: {
+          ownerTokenHash: 1,
+          ownerResponseDeadline: 1,
+        }
+      },
+      { returnDocument: "after" }
+    );
+
+    if (updatedCase) {
+      await logAuditEvent({
+        action: "OWNER_RESPONSE_EXPIRED",
+        resourceType: "VerificationCase",
+        resourceId: vCase._id,
+        metadata: { ownerId: vCase.ownerId }
+      });
+
+      // Send generic availability email to nominee
+      try {
+        const checkUrlAvailable = `${process.env.CLIENT_URL || "http://localhost:5173"}/verify-respond?token=${rawNomineeToken}&type=nominee&choice=available`;
+        const checkUrlUnavailable = `${process.env.CLIENT_URL || "http://localhost:5173"}/verify-respond?token=${rawNomineeToken}&type=nominee&choice=unavailable`;
+        
+        await sendNomineeAvailabilityCheck(
+          nominee.email,
+          nominee.name,
+          checkUrlAvailable,
+          checkUrlUnavailable
+        );
+        updatedCase.nomineeAvailabilityEmailSentAt = new Date();
+        await updatedCase.save();
+
+        await logAuditEvent({
+          action: "NOMINEE_AVAILABILITY_EMAIL_SENT",
+          resourceType: "VerificationCase",
+          resourceId: vCase._id,
+          metadata: { nomineeId: nominee._id }
+        });
+      } catch (emailErr) {
+        console.error("Failed to send nominee check email:", emailErr.message);
+      }
+    }
+  }
+
+  // B. Check Nominee Response Deadlines (Timeout escalation)
+  const nomineePendingCases = await VerificationCase.find({
+    status: "NOMINEE_CONFIRMATION_PENDING",
+    nomineeResponseDeadline: { $lte: new Date() }
+  });
+
+  for (const vCase of nomineePendingCases) {
+    // Atomically transition status from NOMINEE_CONFIRMATION_PENDING to ASSET_RELEASE_AUTHORIZED
+    const updatedCase = await VerificationCase.findOneAndUpdate(
+      { _id: vCase._id, status: "NOMINEE_CONFIRMATION_PENDING" },
+      {
+        $set: {
+          status: "ASSET_RELEASE_AUTHORIZED",
+        },
+        $unset: {
+          nomineeTokenHash: 1,
+          nomineeResponseDeadline: 1,
+        }
+      },
+      { returnDocument: "after" }
+    );
+
+    if (updatedCase) {
+      await logAuditEvent({
+        action: "NOMINEE_RESPONSE_EXPIRED",
+        resourceType: "VerificationCase",
+        resourceId: vCase._id,
+        metadata: { nomineeId: vCase.nomineeId }
+      });
+
+      // Authorize release of assigned assets
+      await authorizeAssetReleaseForCase(updatedCase);
+    }
+  }
+
+  // C. Retry ASSET_RELEASE_AUTHORIZED cases (retries failed releases)
+  const authorizedCases = await VerificationCase.find({
+    status: "ASSET_RELEASE_AUTHORIZED"
+  });
+
+  for (const vCase of authorizedCases) {
+    await authorizeAssetReleaseForCase(vCase);
+  }
+
+  return { processed: policies.length, triggered: triggeredCount };
 };
 
 /**
  * Nominee: Discover inheritances triggered by owner inactivity.
  */
 export const getAvailableInheritancesForNominee = async (nomineeUserId) => {
-  // Find Nominee mappings matching the nomineeUserId
   const nominees = await Nominee.find({ nomineeUserId });
   const inheritances = [];
 
   for (const nominee of nominees) {
-    // Check if there is an active verification case for this owner
-    const vCase = await VerificationCase.findOne({
+    // Find active verification case linked to the policies of this nominee
+    const policies = await Policy.find({
       ownerId: nominee.ownerId,
-      status: { $in: ["VERIFICATION_REQUIRED", "NOMINEE_REQUESTED", "ADMIN_REVIEW", "APPROVED", "RELEASED"] },
+      nomineeId: nominee._id,
     });
 
-    if (vCase) {
-      // Find the policy linking owner to this nominee
-      const policy = await Policy.findOne({
-        ownerId: nominee.ownerId,
-        nomineeId: nominee._id,
-        status: "ACTIVE",
-      }).populate("assets");
+    for (const policy of policies) {
+      const vCase = await VerificationCase.findOne({
+        policyId: policy._id,
+        status: { $in: [
+          "OWNER_CONFIRMATION_PENDING",
+          "NOMINEE_CONFIRMATION_PENDING",
+          "ASSET_RELEASE_AUTHORIZED",
+          "RELEASED",
+          "OWNER_AVAILABLE",
+          "NOMINEE_OWNER_AVAILABLE",
+          // Keep old statuses for legacy data compatibility:
+          "VERIFICATION_REQUIRED",
+          "NOMINEE_REQUESTED",
+          "ADMIN_REVIEW",
+          "APPROVED"
+        ]}
+      });
 
-      if (policy) {
-        // Find existing access requests to determine current request statuses
+      if (vCase) {
+        // Fetch existing access requests
         const requests = await AccessRequest.find({
-          ownerId: nominee.ownerId,
+          verificationCaseId: vCase._id,
           nomineeId: nominee._id,
         });
 
-        // Map assets with basic metadata and request statuses
+        // Map assets with basic metadata and access request status
+        await policy.populate("assets");
         const assets = policy.assets.map((asset) => {
           const reqForAsset = requests.find((r) => r.assetId.toString() === asset._id.toString());
           return {
@@ -121,7 +380,6 @@ export const getAvailableInheritancesForNominee = async (nomineeUserId) => {
           };
         });
 
-        // Fetch owner details safely
         const owner = await User.findById(nominee.ownerId).select("name email");
 
         inheritances.push({
@@ -141,6 +399,211 @@ export const getAvailableInheritancesForNominee = async (nomineeUserId) => {
   }
 
   return inheritances;
+};
+
+/**
+ * Handle Owner Availability Check response (Link callback)
+ */
+export const respondOwnerAvailability = async (token) => {
+  const tokenHash = hashToken(token);
+
+  // Find verification case and check it's in expected previous state
+  const vCase = await VerificationCase.findOne({
+    ownerTokenHash: tokenHash,
+    status: "OWNER_CONFIRMATION_PENDING"
+  });
+
+  if (!vCase) {
+    const checkCase = await VerificationCase.findOne({ ownerTokenHash: tokenHash });
+    if (checkCase && checkCase.ownerResponseDeadline && checkCase.ownerResponseDeadline <= new Date()) {
+      const err = new Error("Availability confirmation link has expired.");
+      err.statusCode = 400;
+      err.errorCode = "LINK_EXPIRED";
+      throw err;
+    }
+    const err = new Error("Invalid or expired response token.");
+    err.statusCode = 400;
+    err.errorCode = "INVALID_TOKEN";
+    throw err;
+  }
+
+  if (vCase.ownerResponseDeadline && vCase.ownerResponseDeadline <= new Date()) {
+    const err = new Error("Availability confirmation link has expired.");
+    err.statusCode = 400;
+    err.errorCode = "LINK_EXPIRED";
+    throw err;
+  }
+
+  // Atomically update state
+  const updatedCase = await VerificationCase.findOneAndUpdate(
+    { _id: vCase._id, status: "OWNER_CONFIRMATION_PENDING" },
+    {
+      $set: {
+        status: "OWNER_AVAILABLE",
+        completedAt: new Date()
+      },
+      $unset: {
+        ownerTokenHash: 1,
+        ownerResponseDeadline: 1,
+        nomineeTokenHash: 1,
+        nomineeResponseDeadline: 1
+      }
+    },
+    { returnDocument: "after" }
+  );
+
+  if (!updatedCase) {
+    const err = new Error("Transition failed. Already updated or race condition.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  await logAuditEvent({
+    action: "OWNER_AVAILABILITY_RESPONDED",
+    resourceType: "VerificationCase",
+    resourceId: updatedCase._id,
+    metadata: { ownerId: updatedCase.ownerId, method: "LINK", response: "AVAILABLE" }
+  });
+
+  // Try sending confirmation email
+  try {
+    const owner = await User.findById(updatedCase.ownerId);
+    if (owner) {
+      await sendOwnerAvailableConfirmation(owner.email, owner.name);
+    }
+  } catch (emailErr) {
+    console.error("Failed to send owner confirmation email:", emailErr.message);
+  }
+
+  return {
+    message: "You have confirmed that you are available. Please log in to LegacyVault to keep your account active."
+  };
+};
+
+/**
+ * Handle Nominee Availability Check response (Link callback)
+ */
+export const respondNomineeAvailability = async (token, choice) => {
+  if (choice !== "available" && choice !== "unavailable") {
+    const err = new Error("Invalid choice response.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const tokenHash = hashToken(token);
+
+  // Find verification case and check it's in expected previous state
+  const vCase = await VerificationCase.findOne({
+    nomineeTokenHash: tokenHash,
+    status: "NOMINEE_CONFIRMATION_PENDING"
+  });
+
+  if (!vCase) {
+    const checkCase = await VerificationCase.findOne({ nomineeTokenHash: tokenHash });
+    if (checkCase && checkCase.nomineeResponseDeadline && checkCase.nomineeResponseDeadline <= new Date()) {
+      const err = new Error("Response deadline has expired.");
+      err.statusCode = 400;
+      err.errorCode = "LINK_EXPIRED";
+      throw err;
+    }
+    const err = new Error("Invalid or expired response token.");
+    err.statusCode = 400;
+    err.errorCode = "INVALID_TOKEN";
+    throw err;
+  }
+
+  if (vCase.nomineeResponseDeadline && vCase.nomineeResponseDeadline <= new Date()) {
+    const err = new Error("Response deadline has expired.");
+    err.statusCode = 400;
+    err.errorCode = "LINK_EXPIRED";
+    throw err;
+  }
+
+  const policy = await Policy.findById(vCase.policyId).populate("ownerId nomineeId");
+  if (!policy) {
+    const err = new Error("Associated policy not found.");
+    err.statusCode = 404;
+    err.errorCode = "POLICY_NOT_FOUND";
+    throw err;
+  }
+
+  if (choice === "available") {
+    // Nominee says owner is available
+    const updatedCase = await VerificationCase.findOneAndUpdate(
+      { _id: vCase._id, status: "NOMINEE_CONFIRMATION_PENDING" },
+      {
+        $set: {
+          status: "NOMINEE_OWNER_AVAILABLE",
+          completedAt: new Date()
+        },
+        $unset: {
+          ownerTokenHash: 1,
+          ownerResponseDeadline: 1,
+          nomineeTokenHash: 1,
+          nomineeResponseDeadline: 1
+        }
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedCase) {
+      const err = new Error("Transition failed. Already updated or race condition.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await logAuditEvent({
+      action: "NOMINEE_AVAILABILITY_RESPONDED",
+      resourceType: "VerificationCase",
+      resourceId: updatedCase._id,
+      metadata: { nomineeId: updatedCase.nomineeId, choice: "AVAILABLE" }
+    });
+
+    try {
+      await sendNomineeOwnerAvailableNotification(policy.nomineeId.email, policy.nomineeId.name, policy.ownerId.name);
+    } catch (emailErr) {
+      console.error("Failed to send nominee notification:", emailErr.message);
+    }
+
+    return {
+      message: "Response recorded. Please ask the owner to log in to LegacyVault."
+    };
+  } else {
+    // Nominee says owner is not available
+    const updatedCase = await VerificationCase.findOneAndUpdate(
+      { _id: vCase._id, status: "NOMINEE_CONFIRMATION_PENDING" },
+      {
+        $set: {
+          status: "ASSET_RELEASE_AUTHORIZED"
+        },
+        $unset: {
+          nomineeTokenHash: 1,
+          nomineeResponseDeadline: 1
+        }
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedCase) {
+      const err = new Error("Transition failed. Already updated or race condition.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await logAuditEvent({
+      action: "NOMINEE_AVAILABILITY_RESPONDED",
+      resourceType: "VerificationCase",
+      resourceId: updatedCase._id,
+      metadata: { nomineeId: updatedCase.nomineeId, choice: "NOT_AVAILABLE" }
+    });
+
+    // Authorize assets release
+    await authorizeAssetReleaseForCase(updatedCase);
+
+    return {
+      message: "Response recorded. Authorized assets are now available."
+    };
+  }
 };
 
 /**
@@ -369,13 +832,42 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
     throw err;
   }
 
-  // Fetch asset and verify owner link
-  const asset = await Asset.findById(assetId);
+  // Strict backend security checks
+  const nominee = await Nominee.findOne({ _id: request.nomineeId, nomineeUserId });
+  if (!nominee || nominee.ownerId.toString() !== request.ownerId.toString()) {
+    const err = new Error("Access denied. Nominee profile mismatched or unauthorized.");
+    err.statusCode = 403;
+    err.errorCode = "ACCESS_DENIED";
+    throw err;
+  }
 
+  const asset = await Asset.findById(assetId);
   if (!asset || asset.ownerId.toString() !== request.ownerId.toString()) {
     const err = new Error("Asset mismatch or corrupted policy");
     err.statusCode = 400;
     err.errorCode = "ASSET_CORRUPTED";
+    throw err;
+  }
+
+  const policy = await Policy.findOne({
+    ownerId: request.ownerId,
+    nomineeId: request.nomineeId,
+    assets: assetId,
+    status: { $in: ["ACTIVE", "COMPLETED"] }
+  });
+
+  if (!policy) {
+    const err = new Error("Access denied. Asset is not assigned to this nominee in the policy.");
+    err.statusCode = 403;
+    err.errorCode = "ACCESS_DENIED";
+    throw err;
+  }
+
+  const vCase = await VerificationCase.findById(request.verificationCaseId);
+  if (!vCase || !["ASSET_RELEASE_AUTHORIZED", "RELEASED"].includes(vCase.status)) {
+    const err = new Error("Access denied. Workflow is not in authorized release state.");
+    err.statusCode = 403;
+    err.errorCode = "ACCESS_DENIED";
     throw err;
   }
 
@@ -395,17 +887,6 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
     request.status = "RELEASED";
     request.releasedAt = new Date();
     await request.save();
-
-    // Update VerificationCase only on first release
-    const vCase = await VerificationCase.findById(
-      request.verificationCaseId
-    );
-
-    if (vCase && vCase.status !== "RELEASED") {
-      vCase.status = "RELEASED";
-      vCase.completedAt = new Date();
-      await vCase.save();
-    }
 
     // Audit only when the asset is initially released
     await logAuditEvent({
@@ -428,7 +909,6 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
  */
 export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
   const nominees = await Nominee.find({ nomineeUserId });
-
   const nomineeIds = nominees.map((n) => n._id.toString());
 
   // Access check
@@ -447,10 +927,46 @@ export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
     throw err;
   }
 
+  // Strict backend security checks
+  const nominee = await Nominee.findOne({ _id: request.nomineeId, nomineeUserId });
+  if (!nominee || nominee.ownerId.toString() !== request.ownerId.toString()) {
+    const err = new Error("Access denied. Nominee profile mismatched or unauthorized.");
+    err.statusCode = 403;
+    err.errorCode = "ACCESS_DENIED";
+    throw err;
+  }
+
   const asset = await Asset.findById(assetId);
+  if (!asset || asset.ownerId.toString() !== request.ownerId.toString()) {
+    const err = new Error("Asset mismatch or corrupted policy");
+    err.statusCode = 400;
+    err.errorCode = "ASSET_CORRUPTED";
+    throw err;
+  }
+
+  const policy = await Policy.findOne({
+    ownerId: request.ownerId,
+    nomineeId: request.nomineeId,
+    assets: assetId,
+    status: { $in: ["ACTIVE", "COMPLETED"] }
+  });
+
+  if (!policy) {
+    const err = new Error("Access denied. Asset is not assigned to this nominee in the policy.");
+    err.statusCode = 403;
+    err.errorCode = "ACCESS_DENIED";
+    throw err;
+  }
+
+  const vCase = await VerificationCase.findById(request.verificationCaseId);
+  if (!vCase || !["ASSET_RELEASE_AUTHORIZED", "RELEASED"].includes(vCase.status)) {
+    const err = new Error("Access denied. Workflow is not in authorized release state.");
+    err.statusCode = 403;
+    err.errorCode = "ACCESS_DENIED";
+    throw err;
+  }
 
   if (
-    !asset ||
     !asset.fileMetadata ||
     !asset.fileMetadata.filename
   ) {

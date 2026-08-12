@@ -18,6 +18,18 @@ const policySchema = new mongoose.Schema(
       required: [true, "Inactivity period (in days) is required"],
       min: [1, "Inactivity period must be at least 1 day"],
     },
+    ownerResponseDays: {
+      type: Number,
+      required: [true, "Owner response period (in days) is required"],
+      min: [1, "Owner response period must be at least 1 day"],
+      default: 3,
+    },
+    nomineeResponseDays: {
+      type: Number,
+      required: [true, "Nominee response period (in days) is required"],
+      min: [1, "Nominee response period must be at least 1 day"],
+      default: 7,
+    },
     nomineeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Nominee",
@@ -35,7 +47,7 @@ const policySchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["ACTIVE", "INACTIVE"],
+      enum: ["ACTIVE", "INACTIVE", "COMPLETED"],
       default: "ACTIVE",
     },
   },

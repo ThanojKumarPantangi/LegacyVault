@@ -8,6 +8,15 @@ const verificationCaseSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    policyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Policy",
+    },
+    nomineeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Nominee",
+      index: true,
+    },
     triggerType: {
       type: String,
       enum: ["INACTIVITY"],
@@ -16,17 +25,46 @@ const verificationCaseSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
+        "OWNER_CONFIRMATION_PENDING",
+        "NOMINEE_CONFIRMATION_PENDING",
+        "ASSET_RELEASE_AUTHORIZED",
+        "RELEASED",
+        "OWNER_AVAILABLE",
+        "NOMINEE_OWNER_AVAILABLE",
+        // Legacy statuses for backward compatibility:
         "PENDING",
         "VERIFICATION_REQUIRED",
         "NOMINEE_REQUESTED",
         "ADMIN_REVIEW",
         "APPROVED",
         "REJECTED",
-        "RELEASED",
         "EXPIRED",
       ],
-      default: "VERIFICATION_REQUIRED",
+      default: "OWNER_CONFIRMATION_PENDING",
       index: true,
+    },
+    ownerTokenHash: {
+      type: String,
+      index: true,
+    },
+    ownerResponseDeadline: {
+      type: Date,
+    },
+    nomineeTokenHash: {
+      type: String,
+      index: true,
+    },
+    nomineeResponseDeadline: {
+      type: Date,
+    },
+    ownerAvailabilityEmailSentAt: {
+      type: Date,
+    },
+    nomineeAvailabilityEmailSentAt: {
+      type: Date,
+    },
+    releaseNotificationSentAt: {
+      type: Date,
     },
     triggeredAt: {
       type: Date,
@@ -44,6 +82,21 @@ const verificationCaseSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+// Only one active inheritance verification case can exist per policy at any given time
+verificationCaseSchema.index(
+  { policyId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $in: [
+        "OWNER_CONFIRMATION_PENDING",
+        "NOMINEE_CONFIRMATION_PENDING",
+        "ASSET_RELEASE_AUTHORIZED"
+      ]}
+    }
   }
 );
 

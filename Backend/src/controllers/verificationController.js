@@ -55,3 +55,49 @@ export const downloadReleasedFile = asyncHandler(async (req, res) => {
   res.setHeader("Content-Type", fileData.mimeType);
   res.send(fileData.buffer);
 });
+
+export const handleOwnerResponse = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    const err = new Error("Token is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  try {
+    const result = await verificationService.respondOwnerAvailability(token);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.message || "Failed to confirm availability.",
+      errorCode: err.errorCode || "CONFIRMATION_FAILED"
+    });
+  }
+});
+
+export const handleNomineeResponse = asyncHandler(async (req, res) => {
+  const { token, choice } = req.body;
+  if (!token || !choice) {
+    const err = new Error("Token and choice are required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  try {
+    const result = await verificationService.respondNomineeAvailability(token, choice);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.message || "Failed to confirm availability.",
+      errorCode: err.errorCode || "CONFIRMATION_FAILED"
+    });
+  }
+});

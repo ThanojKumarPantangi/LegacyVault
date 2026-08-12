@@ -89,39 +89,208 @@ export const getAuditLogs = asyncHandler(async (req, res) => {
 
 export const simulateInactivity = asyncHandler(async (req, res) => {
   if (process.env.NODE_ENV === "production") {
-    const err = new Error("Simulation is disabled in production environments.");
+    const err = new Error(
+      "Simulation is disabled in production environments."
+    );
     err.statusCode = 403;
+    err.errorCode = "SIMULATION_DISABLED";
     throw err;
   }
 
-  const { email, inactivityDays } = req.body;
-  if (!email || !inactivityDays) {
-    const err = new Error("Email and inactivityDays are required");
+  const {
+    simulationStage,
+    email,
+    inactivityDays,
+  } = req.body;
+
+  const validStages = [
+    "OWNER_INACTIVITY",
+    "OWNER_RESPONSE_TIMEOUT",
+    "NOMINEE_RESPONSE_TIMEOUT",
+  ];
+
+  if (!simulationStage || !email) {
+    const err = new Error(
+      "simulationStage and email are required"
+    );
     err.statusCode = 400;
     throw err;
   }
 
-  const user = await User.findOne({ email });
+  if (!validStages.includes(simulationStage)) {
+    const err = new Error("Invalid simulation stage");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const days = Number(inactivityDays);
+
+  if (!Number.isFinite(days) || days < 1) {
+    const err = new Error(
+      "inactivityDays must be a valid number greater than 0"
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const user = await User.findOne({
+    email: email.toLowerCase().trim(),
+  });
+
   if (!user) {
     const err = new Error("User not found");
     err.statusCode = 404;
     throw err;
   }
 
-  const daysMs = Number(inactivityDays) * 24 * 60 * 60 * 1000;
-  user.lastActiveAt = new Date(Date.now() - (daysMs + 10000)); // Subtract days + 10s buffer
-  await user.save();
+  /*
+   * ---------------------------------------------------------
+   * 1. INITIAL OWNER INACTIVITY
+   * ---------------------------------------------------------
+   */
+  if (simulationStage === "OWNER_INACTIVITY") {
+    const activePolicy = await Policy.exists({
+      ownerId: user._id,
+      status: "ACTIVE",
+      triggerType: "INACTIVITY",
+    });
 
-  // Trigger processing immediately
-  const result = await verificationService.processInactiveUsers();
+    if (!activePolicy) {
+      const err = new Error(
+        "This owner does not have an active inactivity policy."
+      );
+      err.statusCode = 400;
+      throw err;
+    }
 
-  res.status(200).json({
-    success: true,
-    message: `Simulated inactivity for user ${email}. Inactivity scan completed.`,
-    data: {
-      userId: user._id,
-      lastActiveAt: user.lastActiveAt,
-      triggered: result.triggered,
-    },
-  });
+    const simulatedLastActiveAt = new Date(
+      Date.now() -
+        days * 24 * 60 * 60 * 1000 -
+        60 * 1000
+    );
+
+    user.lastActiveAt = simulatedLastActiveAt;
+    await user.save();
+
+    const result =
+      await verificationService.processInactiveUsers(
+        user._id
+      );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Owner inactivity simulated successfully. The owner verification workflow was processed.",
+      data: {
+        simulationStage,
+        userId: user._id,
+        email: user.email,
+        lastActiveAt: user.lastActiveAt,
+        triggered: result?.triggered ?? 0,
+      },
+    });
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * 2. OWNER RESPONSE TIMEOUT
+   * ---------------------------------------------------------
+   */
+  if (simulationStage === "OWNER_RESPONSE_TIMEOUT") {
+    const activeCase =
+      await VerificationCase.findOne({
+        ownerId: user._id,
+        status: "OWNER_CONFIRMATION_PENDING",
+      });
+
+    if (!activeCase) {
+      const err = new Error(
+        "No OWNER_CONFIRMATION_PENDING verification case exists for this owner."
+      );
+      err.statusCode = 404;
+      throw err;
+    }
+
+    activeCase.ownerResponseDeadline = new Date(
+      Date.now() - 1000
+    );
+
+    await activeCase.save();
+
+    const result =
+      await verificationService.processInactiveUsers(
+        user._id
+      );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Owner response timeout simulated. The nominee confirmation stage was processed.",
+      data: {
+        simulationStage,
+        verificationCaseId: activeCase._id,
+        status: activeCase.status,
+        triggered: result?.triggered ?? 0,
+      },
+    });
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * 3. NOMINEE RESPONSE TIMEOUT
+   * ---------------------------------------------------------
+   */
+  if (simulationStage === "NOMINEE_RESPONSE_TIMEOUT") {
+    // The email entered in the simulator is the NOMINEE's email.
+    const nominee = await Nominee.findOne({
+      nomineeUserId: user._id,
+      status: "ACTIVE",
+    });
+
+    if (!nominee) {
+      const err = new Error(
+        "This user is not registered as an active nominee."
+      );
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const activeCase = await VerificationCase.findOne({
+      nomineeId: nominee._id,
+      status: "NOMINEE_CONFIRMATION_PENDING",
+    });
+
+    if (!activeCase) {
+      const err = new Error(
+        "No NOMINEE_CONFIRMATION_PENDING verification case exists for this nominee."
+      );
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Force nominee response deadline into the past.
+    activeCase.nomineeResponseDeadline = new Date(Date.now() - 1000);
+
+    await activeCase.save();
+
+    // Process ONLY this owner's workflow.
+    const result =
+      await verificationService.processInactiveUsers(
+        activeCase.ownerId
+      );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Nominee response timeout simulated. Automatic asset release processing was triggered.",
+      data: {
+        simulationStage,
+        verificationCaseId: activeCase._id,
+        nomineeId: nominee._id,
+        status: activeCase.status,
+        triggered: result?.triggered ?? 0,
+      },
+    });
+  }
+  
 });

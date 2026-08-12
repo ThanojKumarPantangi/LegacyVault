@@ -3,7 +3,7 @@ import * as policyService from "../services/policyService.js";
 import { logAuditEvent } from "../services/auditService.js";
 
 export const createPolicy = asyncHandler(async (req, res) => {
-  const { nomineeId, inactivityDays, assets, adminApprovalRequired } = req.body;
+  const { nomineeId, inactivityDays, ownerResponseDays, nomineeResponseDays, assets, adminApprovalRequired } = req.body;
 
   if (!nomineeId || !inactivityDays) {
     const err = new Error("NomineeId and inactivityDays are required");
@@ -14,6 +14,8 @@ export const createPolicy = asyncHandler(async (req, res) => {
   const policy = await policyService.createPolicy(req.user._id, {
     nomineeId,
     inactivityDays: Number(inactivityDays),
+    ownerResponseDays: ownerResponseDays ? Number(ownerResponseDays) : undefined,
+    nomineeResponseDays: nomineeResponseDays ? Number(nomineeResponseDays) : undefined,
     assets,
     adminApprovalRequired,
   });
@@ -51,11 +53,13 @@ export const getPolicyById = asyncHandler(async (req, res) => {
 });
 
 export const updatePolicy = asyncHandler(async (req, res) => {
-  const { nomineeId, inactivityDays, assets, adminApprovalRequired, status } = req.body;
+  const { nomineeId, inactivityDays, ownerResponseDays, nomineeResponseDays, assets, adminApprovalRequired, status } = req.body;
 
   const policy = await policyService.updatePolicy(req.user._id, req.params.id, {
     nomineeId,
     inactivityDays: inactivityDays ? Number(inactivityDays) : undefined,
+    ownerResponseDays: ownerResponseDays ? Number(ownerResponseDays) : undefined,
+    nomineeResponseDays: nomineeResponseDays ? Number(nomineeResponseDays) : undefined,
     assets,
     adminApprovalRequired,
     status,

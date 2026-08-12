@@ -59,6 +59,17 @@ const accessRequestSchema = new mongoose.Schema(
   }
 );
 
+// Unique authorization records per case, nominee, and asset, excluding legacy documents without a verificationCaseId
+accessRequestSchema.index(
+  { verificationCaseId: 1, nomineeId: 1, assetId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      verificationCaseId: { $exists: true, $ne: null }
+    }
+  }
+);
+
 export const AccessRequest = mongoose.model(
   "AccessRequest",
   accessRequestSchema

@@ -72,6 +72,54 @@ export const loginUser = async ({ email, password }) => {
   user.lastActiveAt = new Date();
   await user.save();
 
+  // Cancel active verification cases for this owner upon successful login
+  try {
+    const { Policy } = await import("../models/Policy.js");
+    const { VerificationCase } = await import("../models/VerificationCase.js");
+    const { logAuditEvent } = await import("./auditService.js");
+
+    const ownerPolicies = await Policy.find({ ownerId: user._id });
+    const policyIds = ownerPolicies.map(p => p._id);
+
+    if (policyIds.length > 0) {
+      const activeCases = await VerificationCase.find({
+        policyId: { $in: policyIds },
+        status: { $in: ["OWNER_CONFIRMATION_PENDING", "NOMINEE_CONFIRMATION_PENDING"] }
+      });
+
+      for (const vCase of activeCases) {
+        const updatedCase = await VerificationCase.findOneAndUpdate(
+          { _id: vCase._id, status: vCase.status },
+          {
+            $set: {
+              status: "OWNER_AVAILABLE",
+              completedAt: new Date()
+            },
+            $unset: {
+              ownerTokenHash: 1,
+              ownerResponseDeadline: 1,
+              nomineeTokenHash: 1,
+              nomineeResponseDeadline: 1
+            }
+          },
+          { returnDocument: "after" }
+        );
+
+        if (updatedCase) {
+          await logAuditEvent({
+            actorId: user._id,
+            action: "OWNER_AVAILABILITY_RESPONDED",
+            resourceType: "VerificationCase",
+            resourceId: vCase._id,
+            metadata: { ownerId: user._id, method: "LOGIN", response: "AVAILABLE" }
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[LOGIN CANCEL EXCEPTION]:", err.message);
+  }
+
   const userObject = user.toObject();
   delete userObject.password;
 

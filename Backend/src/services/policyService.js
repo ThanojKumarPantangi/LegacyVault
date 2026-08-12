@@ -33,7 +33,7 @@ const validatePolicyRelations = async (ownerId, nomineeId, assets) => {
 /**
  * Creates an inheritance policy.
  */
-export const createPolicy = async (ownerId, { nomineeId, inactivityDays, assets, adminApprovalRequired }) => {
+export const createPolicy = async (ownerId, { nomineeId, inactivityDays, ownerResponseDays, nomineeResponseDays, assets, adminApprovalRequired }) => {
   await validatePolicyRelations(ownerId, nomineeId, assets);
 
   // Check if a policy for this nominee already exists
@@ -45,10 +45,16 @@ export const createPolicy = async (ownerId, { nomineeId, inactivityDays, assets,
     throw err;
   }
 
+  // Enforce timeline validations
+  const finalOwnerResponseDays = Number(ownerResponseDays) >= 1 ? Number(ownerResponseDays) : 3;
+  const finalNomineeResponseDays = Number(nomineeResponseDays) >= 1 ? Number(nomineeResponseDays) : 7;
+
   const policy = new Policy({
     ownerId,
     nomineeId,
-    inactivityDays,
+    inactivityDays: Number(inactivityDays),
+    ownerResponseDays: finalOwnerResponseDays,
+    nomineeResponseDays: finalNomineeResponseDays,
     assets: assets || [],
     adminApprovalRequired: adminApprovalRequired !== false,
     triggerType: "INACTIVITY",
@@ -89,7 +95,7 @@ export const getPolicyById = async (ownerId, policyId) => {
 export const updatePolicy = async (
   ownerId,
   policyId,
-  { nomineeId, inactivityDays, assets, adminApprovalRequired, status }
+  { nomineeId, inactivityDays, ownerResponseDays, nomineeResponseDays, assets, adminApprovalRequired, status }
 ) => {
   const policy = await Policy.findOne({ _id: policyId, ownerId });
   if (!policy) {
@@ -102,7 +108,9 @@ export const updatePolicy = async (
   await validatePolicyRelations(ownerId, nomineeId, assets);
 
   if (nomineeId) policy.nomineeId = nomineeId;
-  if (inactivityDays) policy.inactivityDays = inactivityDays;
+  if (inactivityDays) policy.inactivityDays = Number(inactivityDays);
+  if (ownerResponseDays !== undefined) policy.ownerResponseDays = Number(ownerResponseDays) >= 1 ? Number(ownerResponseDays) : 3;
+  if (nomineeResponseDays !== undefined) policy.nomineeResponseDays = Number(nomineeResponseDays) >= 1 ? Number(nomineeResponseDays) : 7;
   if (assets) policy.assets = assets;
   if (adminApprovalRequired !== undefined) policy.adminApprovalRequired = adminApprovalRequired;
   if (status) policy.status = status;
