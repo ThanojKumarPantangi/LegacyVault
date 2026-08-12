@@ -17,6 +17,9 @@ const Dashboard = () => {
   const [simLoading, setSimLoading] = useState(false);
   const [simMessage, setSimMessage] = useState("");
   const [simError, setSimError] = useState("");
+  const [simulationStage, setSimulationStage] = useState(
+    "OWNER_INACTIVITY"
+  );
 
   useEffect(() => {
     dispatch(fetchAdminStats());
@@ -33,14 +36,29 @@ const Dashboard = () => {
     }
 
     setSimLoading(true);
-    const result = await dispatch(simulateInactivity({ email, inactivityDays }));
+
+    const result = await dispatch(
+      simulateInactivity({
+        simulationStage,
+        email,
+        inactivityDays,
+      })
+    );
+
     setSimLoading(false);
 
     if (simulateInactivity.fulfilled.match(result)) {
-      setSimMessage(result.payload.message || "Inactivity simulation completed successfully!");
+      setSimMessage(
+        result.payload.message ||
+          "Simulation completed successfully!"
+      );
+
       dispatch(fetchAdminStats());
     } else {
-      setSimError(result.payload || "Failed to simulate inactivity.");
+      setSimError(
+        result.payload ||
+          "Failed to run simulation."
+      );
     }
   };
 
@@ -96,10 +114,15 @@ const Dashboard = () => {
                 <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-lg">
                   <Play className="w-5 h-5" />
                 </div>
+
                 <div>
-                  <h3 className="text-lg font-bold text-slate-100">Inactivity Trigger Simulator</h3>
+                  <h3 className="text-lg font-bold text-slate-100">
+                    Inheritance Workflow Simulator
+                  </h3>
+
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Safe testing workspace. Set back an owner's pulse to trigger verification workflows instantly.
+                    Safely simulate individual stages of the inheritance
+                    verification workflow.
                   </p>
                 </div>
               </div>
@@ -116,21 +139,65 @@ const Dashboard = () => {
                 </div>
               )}
 
-              <form onSubmit={handleSimulate} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-                <div className="sm:col-span-2">
+              <form
+                onSubmit={handleSimulate}
+                className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
+              >
+                {/* Simulation Stage */}
+                <div>
+                  <label
+                    htmlFor="simulationStage"
+                    className="block text-xs font-semibold text-slate-400 mb-1.5"
+                  >
+                    Simulation Stage
+                  </label>
+
+                  <select
+                    id="simulationStage"
+                    value={simulationStage}
+                    onChange={(e) => setSimulationStage(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 text-sm bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="OWNER_INACTIVITY">
+                      Initial Owner Inactivity
+                    </option>
+
+                    <option value="OWNER_RESPONSE_TIMEOUT">
+                      Owner Response Timeout
+                    </option>
+
+                    <option value="NOMINEE_RESPONSE_TIMEOUT">
+                      Nominee Response Timeout
+                    </option>
+                  </select>
+                </div>
+
+                {/* Email */}
+                <div>
                   <Input
-                    label="Asset Owner Email Address"
+                    label={
+                      simulationStage === "NOMINEE_RESPONSE_TIMEOUT"
+                        ? "Asset Owner Email Address"
+                        : "Asset Owner Email Address"
+                    }
                     id="simEmail"
                     type="email"
-                    placeholder="user@test.com"
+                    placeholder="owner@test.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                   />
                 </div>
+
+                {/* Days */}
                 <div>
                   <Input
-                    label="Days of Inactivity"
+                    label={
+                      simulationStage === "OWNER_INACTIVITY"
+                        ? "Days of Inactivity"
+                        : "Timeout Days"
+                    }
                     id="simDays"
                     type="number"
                     min="1"
@@ -140,9 +207,16 @@ const Dashboard = () => {
                     required
                   />
                 </div>
+
+                {/* Submit */}
                 <div className="sm:col-span-3 flex justify-end mt-2">
-                  <Button type="submit" loading={simLoading} variant="outline" className="w-full sm:w-auto">
-                    Simulate Inactivity Pulse
+                  <Button
+                    type="submit"
+                    loading={simLoading}
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                  >
+                    Simulate Workflow Stage
                   </Button>
                 </div>
               </form>
@@ -150,12 +224,30 @@ const Dashboard = () => {
 
             {/* Admin notes */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <h3 className="text-base font-bold text-slate-100 mb-3">Verification Rules</h3>
+              <h3 className="text-base font-bold text-slate-100 mb-3">
+                Verification Rules
+              </h3>
+
               <ul className="text-xs text-slate-400 space-y-2.5 list-disc pl-4 leading-relaxed">
-                <li>Simulating inactivity updates the User's `lastActiveAt` to the past.</li>
-                <li>Executing simulation runs the cron checker immediately.</li>
-                <li>If the owner inactivity matches their policy limits, a verification case starts.</li>
-                <li>Associated nominees receive simulated email alerts containing claim instructions.</li>
+                <li>
+                  <strong>Initial Owner Inactivity:</strong> moves the
+                  owner's <code>lastActiveAt</code> into the past and
+                  runs the inactivity processor.
+                </li>
+
+                <li>
+                  <strong>Owner Response Timeout:</strong> moves the
+                  active VerificationCase's{" "}
+                  <code>ownerResponseDeadline</code> into the past,
+                  causing the nominee confirmation stage to begin.
+                </li>
+
+                <li>
+                  <strong>Nominee Response Timeout:</strong> moves the
+                  active VerificationCase's{" "}
+                  <code>nomineeResponseDeadline</code> into the past,
+                  causing automatic asset release processing.
+                </li>
               </ul>
             </div>
           </div>

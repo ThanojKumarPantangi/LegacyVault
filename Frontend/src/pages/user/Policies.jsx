@@ -34,6 +34,8 @@ const Policies = () => {
   // Form states
   const [nomineeId, setNomineeId] = useState("");
   const [inactivityDays, setInactivityDays] = useState(30);
+  const [ownerResponseDays, setOwnerResponseDays] = useState(3);
+  const [nomineeResponseDays, setNomineeResponseDays] = useState(7);
   const [selectedAssets, setSelectedAssets] = useState([]);
   const [adminApprovalRequired, setAdminApprovalRequired] = useState(true);
   const [formErrors, setFormErrors] = useState({});
@@ -50,6 +52,8 @@ const Policies = () => {
     setEditingPolicy(null);
     setNomineeId(nominees[0]?._id || "");
     setInactivityDays(30);
+    setOwnerResponseDays(3);
+    setNomineeResponseDays(7);
     setSelectedAssets([]);
     setAdminApprovalRequired(true);
     setFormErrors({});
@@ -60,6 +64,8 @@ const Policies = () => {
     setEditingPolicy(policy);
     setNomineeId(policy.nomineeId?._id || policy.nomineeId || "");
     setInactivityDays(policy.inactivityDays);
+    setOwnerResponseDays(policy.ownerResponseDays || 3);
+    setNomineeResponseDays(policy.nomineeResponseDays || 7);
     setSelectedAssets(policy.assets.map((a) => a._id || a));
     setAdminApprovalRequired(policy.adminApprovalRequired);
     setFormErrors({});
@@ -71,6 +77,12 @@ const Policies = () => {
     if (!nomineeId) errors.nomineeId = "Nominee is required";
     if (!inactivityDays || Number(inactivityDays) <= 0) {
       errors.inactivityDays = "Inactivity period must be at least 1 day";
+    }
+    if (!ownerResponseDays || Number(ownerResponseDays) <= 0) {
+      errors.ownerResponseDays = "Owner response period must be at least 1 day";
+    }
+    if (!nomineeResponseDays || Number(nomineeResponseDays) <= 0) {
+      errors.nomineeResponseDays = "Nominee response period must be at least 1 day";
     }
     if (selectedAssets.length === 0) {
       errors.assets = "Please select at least one asset to assign";
@@ -86,6 +98,8 @@ const Policies = () => {
     const payload = {
       nomineeId,
       inactivityDays: Number(inactivityDays),
+      ownerResponseDays: Number(ownerResponseDays),
+      nomineeResponseDays: Number(nomineeResponseDays),
       assets: selectedAssets,
       adminApprovalRequired,
     };
@@ -215,6 +229,20 @@ const Policies = () => {
 
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span className="flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-slate-500" /> Owner Response
+                      </span>
+                      <strong className="text-slate-200">{policy.ownerResponseDays || 3} Days</strong>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span className="flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-slate-500" /> Nominee Response
+                      </span>
+                      <strong className="text-slate-200">{policy.nomineeResponseDays || 7} Days</strong>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span className="flex items-center gap-1.5">
                         <Shield className="w-4 h-4 text-slate-500" /> Admin Verification
                       </span>
                       <strong className="text-slate-200">
@@ -275,6 +303,30 @@ const Policies = () => {
             value={inactivityDays}
             onChange={(e) => setInactivityDays(e.target.value)}
             error={formErrors.inactivityDays}
+            required
+          />
+
+          <Input
+            label="Owner Response Period (Days)"
+            id="ownerResponseDays"
+            type="number"
+            min="1"
+            placeholder="3"
+            value={ownerResponseDays}
+            onChange={(e) => setOwnerResponseDays(e.target.value)}
+            error={formErrors.ownerResponseDays}
+            required
+          />
+
+          <Input
+            label="Nominee Response Period (Days)"
+            id="nomineeResponseDays"
+            type="number"
+            min="1"
+            placeholder="7"
+            value={nomineeResponseDays}
+            onChange={(e) => setNomineeResponseDays(e.target.value)}
+            error={formErrors.nomineeResponseDays}
             required
           />
 

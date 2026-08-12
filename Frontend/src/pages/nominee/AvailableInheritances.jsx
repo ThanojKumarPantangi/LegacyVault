@@ -30,6 +30,23 @@ const AvailableInheritances = () => {
     }
   };
 
+  const getBadgeStatus = (status) => {
+    switch (status) {
+      case "OWNER_CONFIRMATION_PENDING": return "pending";
+      case "NOMINEE_CONFIRMATION_PENDING": return "verification_required";
+      case "ASSET_RELEASE_AUTHORIZED": return "released";
+      case "RELEASED": return "approved";
+      case "OWNER_AVAILABLE":
+      case "NOMINEE_OWNER_AVAILABLE":
+        return "active";
+      default: return "default";
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    return status.replace(/_/g, " ");
+  };
+
   return (
     <div>
       <PageHeader
@@ -77,11 +94,31 @@ const AvailableInheritances = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-500 font-medium">Inactivity trigger status:</span>
-                  <Badge status="verification_required">
-                    {inh.verificationStatus.replace("_", " ")}
+                  <Badge status={getBadgeStatus(inh.verificationStatus)}>
+                    {getStatusLabel(inh.verificationStatus)}
                   </Badge>
                 </div>
               </div>
+
+              {/* Status explanation warning banners */}
+              {inh.verificationStatus === "NOMINEE_CONFIRMATION_PENDING" && (
+                <div className="p-4 mx-6 mt-4 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold rounded-xl flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>Action Required: Availability check is waiting for nominee confirmation response. Please check your email for the secure link.</span>
+                </div>
+              )}
+              {inh.verificationStatus === "OWNER_CONFIRMATION_PENDING" && (
+                <div className="p-4 mx-6 mt-4 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold rounded-xl flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span>Waiting for owner availability confirmation. Escalation to nominee starts if the owner does not respond within their deadline.</span>
+                </div>
+              )}
+              {(inh.verificationStatus === "OWNER_AVAILABLE" || inh.verificationStatus === "NOMINEE_OWNER_AVAILABLE") && (
+                <div className="p-4 mx-6 mt-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-xl flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Owner has been confirmed available. Workflow stopped. Please ask the owner to log in to LegacyVault to keep their account active.</span>
+                </div>
+              )}
 
               {/* Assets list */}
               <div className="divide-y divide-slate-800">

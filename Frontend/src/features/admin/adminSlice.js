@@ -76,12 +76,27 @@ export const fetchAuditLogs = createAsyncThunk(
 
 export const simulateInactivity = createAsyncThunk(
   "admin/simulateInactivity",
-  async ({ email, inactivityDays }, { rejectWithValue }) => {
+  async (
+    { simulationStage, email, inactivityDays },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await apiClient.post("/admin/simulate-inactivity", { email, inactivityDays });
+      const response = await apiClient.post(
+        "/admin/simulate-inactivity",
+        {
+          simulationStage,
+          email,
+          inactivityDays,
+        }
+      );
+
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.message);
+      return rejectWithValue(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to simulate workflow."
+      );
     }
   }
 );

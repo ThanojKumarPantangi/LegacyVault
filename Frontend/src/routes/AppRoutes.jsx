@@ -34,6 +34,9 @@ import AdminUsers from "../pages/admin/Users.jsx";
 import AdminRequests from "../pages/admin/VerificationRequests.jsx";
 import AdminLogs from "../pages/admin/AuditLogs.jsx";
 
+// Public Verify response page
+import VerifyRespond from "../pages/auth/VerifyRespond.jsx";
+
 const AppRoutes = () => {
   return (
     <Routes>
@@ -45,6 +48,9 @@ const AppRoutes = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
       </Route>
+
+      {/* Public Verification Response Route (No Auth Guard / No Redirect) */}
+      <Route path="/verify-respond" element={<VerifyRespond />} />
 
       {/* Private/Protected Routes */}
       <Route element={<ProtectedRoute />}>
