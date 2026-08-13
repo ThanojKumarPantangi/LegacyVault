@@ -152,7 +152,7 @@ export const sendEmail = async ({ to, subject, html }) => {
  */
 export const sendOwnerAvailabilityCheck = async (ownerEmail, ownerName, respondUrl) => {
   const subject = "LegacyVault Availability Confirmation";
-  const html = generateDarkEmailTemplate(`
+  const html = generateEmailTemplate(`
     <h3>Hello ${ownerName},</h3>
     <p>We noticed that you have not recently logged into your LegacyVault account.</p>
     
@@ -172,7 +172,7 @@ export const sendOwnerAvailabilityCheck = async (ownerEmail, ownerName, respondU
  */
 export const sendOwnerAvailableConfirmation = async (ownerEmail, ownerName) => {
   const subject = "LegacyVault Availability Confirmed";
-  const html = generateDarkEmailTemplate(`
+  const html = generateEmailTemplate(`
     <h3>Hello ${ownerName},</h3>
     <p>You have successfully confirmed that you are available.</p>
     
@@ -192,7 +192,7 @@ export const sendOwnerAvailableConfirmation = async (ownerEmail, ownerName) => {
  */
 export const sendNomineeAvailabilityCheck = async (nomineeEmail, nomineeName, availableUrl, unavailableUrl) => {
   const subject = "LegacyVault Availability Confirmation";
-  const html = generateDarkEmailTemplate(`
+  const html = generateEmailTemplate(`
     <h3>Hello ${nomineeName},</h3>
     <p>We are trying to confirm the availability of a LegacyVault account owner.</p>
     
@@ -215,7 +215,7 @@ export const sendNomineeAvailabilityCheck = async (nomineeEmail, nomineeName, av
  */
 export const sendNomineeOwnerAvailableNotification = async (nomineeEmail, nomineeName, ownerName) => {
   const subject = "LegacyVault Availability Notice";
-  const html = generateDarkEmailTemplate(`
+  const html = generateEmailTemplate(`
     <h3>Hello ${nomineeName},</h3>
     <p>The LegacyVault account owner (<span class="highlight">${ownerName}</span>) has been confirmed available.</p>
     
@@ -233,7 +233,7 @@ export const sendNomineeOwnerAvailableNotification = async (nomineeEmail, nomine
  */
 export const sendAssetReleaseNotification = async (nomineeEmail, nomineeName) => {
   const subject = "LegacyVault Inheritance Release Authorized";
-  const html = generateDarkEmailTemplate(`
+  const html = generateEmailTemplate(`
     <h3>Hello ${nomineeName},</h3>
     <p>Your authorized LegacyVault inheritance access is now available.</p>
     
@@ -255,7 +255,7 @@ export const sendNomineeNotification = async (nomineeEmail, nomineeName, ownerNa
 
 export const sendAccessRequestedNotification = async (adminEmails, nomineeName, ownerName, assetTitle) => {
   const subject = `LegacyVault Admin Alert: Access Requested by Nominee`;
-  const html = generateDarkEmailTemplate(`
+  const html = generateEmailTemplate(`
     <h3>Admin Alert,</h3>
     <p>Nominee <span class="highlight">${nomineeName}</span> has submitted a new access request.</p>
     <div class="info-box border-warning">
@@ -277,7 +277,7 @@ export const sendAccessApprovedNotification = async (nomineeEmail, nomineeName, 
 
 export const sendAccessRejectedNotification = async (nomineeEmail, nomineeName, assetTitle, ownerName, reason) => {
   const subject = `LegacyVault Access Request: REJECTED`;
-  const html = generateDarkEmailTemplate(`
+  const html = generateEmailTemplate(`
     <h3>Hello ${nomineeName},</h3>
     <p>We regret to inform you that your request to access the asset below has been <span class="status-rejected">REJECTED</span> by the platform administrator.</p>
     <div class="info-box border-rejected">
