@@ -88,14 +88,14 @@ export const getAuditLogs = asyncHandler(async (req, res) => {
 });
 
 export const simulateInactivity = asyncHandler(async (req, res) => {
-  if (process.env.NODE_ENV === "production") {
-    const err = new Error(
-      "Simulation is disabled in production environments."
-    );
-    err.statusCode = 403;
-    err.errorCode = "SIMULATION_DISABLED";
-    throw err;
-  }
+  // if (process.env.NODE_ENV === "production") {
+  //   const err = new Error(
+  //     "Simulation is disabled in production environments."
+  //   );
+  //   err.statusCode = 403;
+  //   err.errorCode = "SIMULATION_DISABLED";
+  //   throw err;
+  // }
 
   const {
     simulationStage,
