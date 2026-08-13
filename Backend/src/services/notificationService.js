@@ -4,25 +4,36 @@ import { env } from "../config/env.js";
 /**
  * Reusable layout for modern, dark-themed email templates
  */
-const generateDarkEmailTemplate = (content) => `
+/**
+ * Reusable layout for modern, responsive email templates with Light/Dark mode support
+ */
+const generateEmailTemplate = (content) => `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- These meta tags are required to enable dark mode in supported email clients -->
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  
   <style>
-    body { margin: 0; padding: 0; background-color: #121212; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
-    .wrapper { width: 100%; table-layout: fixed; background-color: #121212; padding-bottom: 40px; }
-    .main { background-color: #1e1e1e; margin: 40px auto; max-width: 600px; border-radius: 8px; border: 1px solid #333333; overflow: hidden; color: #e0e0e0; }
-    .header { padding: 30px; text-align: center; border-bottom: 1px solid #333333; background-color: #181818; }
-    .header h1 { margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: 1px; }
+    /* 
+     * BASE STYLES (LIGHT MODE DEFAULT)
+     * We default to light mode because clients that don't support media queries will fall back to this.
+     */
+    body { margin: 0; padding: 0; background-color: #f3f4f6; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #f3f4f6; padding-bottom: 40px; }
+    .main { background-color: #ffffff; margin: 40px auto; max-width: 600px; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden; color: #374151; }
+    .header { padding: 30px; text-align: center; border-bottom: 1px solid #e5e7eb; background-color: #ffffff; }
+    .header h1 { margin: 0; color: #111827; font-size: 24px; font-weight: 600; letter-spacing: 1px; }
     .header h1 span { color: #6366F1; } /* Indigo accent for Vault */
     .body-content { padding: 30px; line-height: 1.6; font-size: 16px; }
-    .body-content h3 { color: #ffffff; margin-top: 0; font-size: 20px; font-weight: 500; }
-    .body-content p { margin: 0 0 15px 0; color: #cccccc; }
-    .highlight { color: #ffffff; font-weight: bold; }
-    .info-box { background-color: #252525; border-left: 4px solid #6366F1; padding: 15px 20px; border-radius: 0 6px 6px 0; margin: 20px 0; }
-    .footer { padding: 20px; text-align: center; font-size: 12px; color: #777777; border-top: 1px solid #333333; background-color: #181818; }
+    .body-content h3 { color: #111827; margin-top: 0; font-size: 20px; font-weight: 500; }
+    .body-content p { margin: 0 0 15px 0; color: #4b5563; }
+    .highlight { color: #111827; font-weight: bold; }
+    .info-box { background-color: #f8fafc; border-left: 4px solid #6366F1; padding: 15px 20px; border-radius: 0 6px 6px 0; margin: 20px 0; }
+    .footer { padding: 20px; text-align: center; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; background-color: #f9fafb; }
     .footer p { margin: 5px 0; }
     .btn { display: inline-block; background-color: #6366F1; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 15px; text-align: center; }
     .btn:hover { background-color: #4F46E5; }
@@ -31,6 +42,23 @@ const generateDarkEmailTemplate = (content) => `
     .border-approved { border-left-color: #10B981; }
     .border-rejected { border-left-color: #EF4444; }
     .border-warning { border-left-color: #F59E0B; }
+
+    /* 
+     * DARK MODE OVERRIDES
+     * Uses !important to ensure email clients apply these over the defaults when in dark mode
+     */
+    @media (prefers-color-scheme: dark) {
+      body, .wrapper { background-color: #121212 !important; }
+      .main { background-color: #1e1e1e !important; border-color: #333333 !important; color: #e0e0e0 !important; }
+      .header { background-color: #181818 !important; border-bottom-color: #333333 !important; }
+      .header h1 { color: #ffffff !important; }
+      .body-content h3 { color: #ffffff !important; }
+      .body-content p { color: #cccccc !important; }
+      .highlight { color: #ffffff !important; }
+      .info-box { background-color: #252525 !important; }
+      .footer { background-color: #181818 !important; border-top-color: #333333 !important; color: #777777 !important; }
+      /* Status/Border colors usually look fine in both, but you can override here if needed */
+    }
   </style>
 </head>
 <body>
@@ -51,6 +79,7 @@ const generateDarkEmailTemplate = (content) => `
 </body>
 </html>
 `;
+
 
 export let emailHook = null;
 export const setEmailHook = (hook) => {
