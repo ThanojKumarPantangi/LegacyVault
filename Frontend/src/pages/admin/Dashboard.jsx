@@ -4,8 +4,9 @@ import { fetchAdminStats, simulateInactivity } from "../../features/admin/adminS
 import PageHeader from "../../components/common/PageHeader.jsx";
 import Button from "../../components/common/Button.jsx";
 import Input from "../../components/common/Input.jsx";
+import Select from "../../components/common/Select.jsx";
 import Spinner from "../../components/common/Spinner.jsx";
-import { ShieldCheck, Users, FolderLock, BookOpen, AlertTriangle, Play, HelpCircle } from "lucide-react";
+import { ShieldCheck, Users, FolderLock, BookOpen, AlertTriangle, Play, HelpCircle, CheckCircle2, Clock, Sparkles } from "lucide-react";
 
 const Dashboard = () => {
   const dispatch = useDispatch();
@@ -17,9 +18,7 @@ const Dashboard = () => {
   const [simLoading, setSimLoading] = useState(false);
   const [simMessage, setSimMessage] = useState("");
   const [simError, setSimError] = useState("");
-  const [simulationStage, setSimulationStage] = useState(
-    "OWNER_INACTIVITY"
-  );
+  const [simulationStage, setSimulationStage] = useState("OWNER_INACTIVITY");
 
   useEffect(() => {
     dispatch(fetchAdminStats());
@@ -49,57 +48,92 @@ const Dashboard = () => {
 
     if (simulateInactivity.fulfilled.match(result)) {
       setSimMessage(
-        result.payload.message ||
-          "Simulation completed successfully!"
+        result.payload.message || "Simulation stage executed successfully!"
       );
-
       dispatch(fetchAdminStats());
     } else {
-      setSimError(
-        result.payload ||
-          "Failed to run simulation."
-      );
+      setSimError(result.payload || "Failed to execute simulation stage.");
     }
   };
 
   const statCards = stats
     ? [
-        { name: "Total Users", value: stats.usersCount, icon: Users, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
-        { name: "Deposited Assets", value: stats.assetsCount, icon: FolderLock, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
-        { name: "Nominee Links", value: stats.nomineesCount, icon: HelpCircle, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
-        { name: "Inheritance Policies", value: stats.policiesCount, icon: BookOpen, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
-        { name: "Pending Claims", value: stats.pendingRequestsCount, icon: AlertTriangle, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-        { name: "Verification Cases", value: stats.verificationCasesCount, icon: ShieldCheck, color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
+        {
+          name: "Registered Users",
+          value: stats.usersCount,
+          icon: Users,
+          color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900/50",
+        },
+        {
+          name: "Deposited Assets",
+          value: stats.assetsCount,
+          icon: FolderLock,
+          color: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900/50",
+        },
+        {
+          name: "Nominee Links",
+          value: stats.nomineesCount,
+          icon: HelpCircle,
+          color: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-900/50",
+        },
+        {
+          name: "Inheritance Policies",
+          value: stats.policiesCount,
+          icon: BookOpen,
+          color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50",
+        },
+        {
+          name: "Pending Claims",
+          value: stats.pendingRequestsCount,
+          icon: AlertTriangle,
+          color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50",
+        },
+        {
+          name: "Verification Cases",
+          value: stats.verificationCasesCount,
+          icon: ShieldCheck,
+          color: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 border-teal-200 dark:border-teal-900/50",
+        },
       ]
     : [];
 
+  const simulationOptions = [
+    { value: "OWNER_INACTIVITY", label: "Stage 1: Owner Inactivity Exceeded" },
+    { value: "OWNER_RESPONSE_TIMEOUT", label: "Stage 2: Owner Response Deadline Elapsed" },
+    { value: "NOMINEE_RESPONSE_TIMEOUT", label: "Stage 3: Nominee Confirmation Elapsed" },
+  ];
+
   return (
-    <div>
+    <div className="space-y-8">
       <PageHeader
         title="Admin Control Center"
-        subtitle="Manage platform users, review verification requests, monitor security logs, and test inactivity triggers."
+        subtitle="Real-time security telemetry, user access oversight, verification claims, and workflow test simulation."
       />
 
       {loading && !stats ? (
-        <div className="flex justify-center py-12">
-          <Spinner size="lg" className="text-emerald-500" />
+        <div className="flex justify-center py-16">
+          <Spinner size="lg" className="text-emerald-600 dark:text-emerald-500" />
         </div>
       ) : (
         <>
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-10">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {statCards.map((card) => {
               const Icon = card.icon;
               return (
                 <div
                   key={card.name}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex items-center justify-between transition-colors duration-200"
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 flex items-center justify-between shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors duration-200"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{card.name}</p>
-                    <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">{card.value}</p>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      {card.name}
+                    </p>
+                    <p className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 mt-2 font-mono">
+                      {card.value}
+                    </p>
                   </div>
-                  <div className={`p-3 rounded-xl border ${card.color}`}>
+                  <div className={`p-3.5 rounded-xl border ${card.color}`}>
                     <Icon className="w-5 h-5" />
                   </div>
                 </div>
@@ -107,117 +141,97 @@ const Dashboard = () => {
             })}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Inactivity Simulation form */}
-            <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 transition-colors duration-200">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-lg">
+            <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-7 shadow-xs transition-colors duration-200">
+              <div className="flex items-center gap-3 mb-5 pb-5 border-b border-slate-100 dark:border-slate-800">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 flex items-center justify-center">
                   <Play className="w-5 h-5" />
                 </div>
-
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                     Inheritance Workflow Simulator
                   </h3>
-
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Safely simulate individual stages of the inheritance
-                    verification workflow.
+                    Test automated time-delay verification stages in a controlled environment.
                   </p>
                 </div>
               </div>
 
               {simMessage && (
-                <div className="p-3 mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-lg">
-                  {simMessage}
+                <div className="p-3.5 mb-5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-xs font-semibold rounded-xl flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{simMessage}</span>
                 </div>
               )}
 
               {simError && (
-                <div className="p-3 mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold rounded-lg">
-                  {simError}
+                <div className="p-3.5 mb-5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 text-xs font-semibold rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{simError}</span>
                 </div>
               )}
 
-              <form
-                onSubmit={handleSimulate}
-                className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
-              >
-                {/* Simulation Stage */}
-                <div>
-                  <label
-                    htmlFor="simulationStage"
-                    className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5"
-                  >
-                    Simulation Stage
-                  </label>
+              <form onSubmit={handleSimulate} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Simulation Stage */}
+                  <div className="sm:col-span-3">
+                    <Select
+                      label="Workflow Simulation Stage"
+                      id="simulationStage"
+                      value={simulationStage}
+                      onChange={(e) => setSimulationStage(e.target.value)}
+                      options={simulationOptions}
+                      required
+                    />
+                  </div>
 
-                  <select
-                    id="simulationStage"
-                    value={simulationStage}
-                    onChange={(e) => setSimulationStage(e.target.value)}
-                    required
-                    className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="OWNER_INACTIVITY">
-                      Initial Owner Inactivity
-                    </option>
+                  {/* Email */}
+                  <div className="sm:col-span-2">
+                    <Input
+                      label={
+                        simulationStage === "NOMINEE_RESPONSE_TIMEOUT"
+                          ? "Nominee Target Email Address"
+                          : "Asset Owner Email Address"
+                      }
+                      id="simEmail"
+                      type="email"
+                      placeholder={
+                        simulationStage === "NOMINEE_RESPONSE_TIMEOUT"
+                          ? "nominee@example.com"
+                          : "owner@example.com"
+                      }
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
 
-                    <option value="OWNER_RESPONSE_TIMEOUT">
-                      Owner Response Timeout
-                    </option>
-
-                    <option value="NOMINEE_RESPONSE_TIMEOUT">
-                      Nominee Response Timeout
-                    </option>
-                  </select>
+                  {/* Days */}
+                  <div>
+                    <Input
+                      label={
+                        simulationStage === "OWNER_INACTIVITY"
+                          ? "Elapsed Inactivity (Days)"
+                          : "Timeout Offset (Days)"
+                      }
+                      id="simDays"
+                      type="number"
+                      min="1"
+                      placeholder="1"
+                      value={inactivityDays}
+                      onChange={(e) => setInactivityDays(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
 
-                {/* Email */}
-                <div>
-                  <Input
-                    label={
-                      simulationStage === "NOMINEE_RESPONSE_TIMEOUT"
-                        ? "Nominee Email Address"
-                        : "Asset Owner Email Address"
-                    }
-                    id="simEmail"
-                    type="email"
-                    placeholder={
-                      simulationStage === "NOMINEE_RESPONSE_TIMEOUT"
-                        ? "nominee@test.com"
-                        : "owner@test.com"
-                    }
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Days */}
-                <div>
-                  <Input
-                    label={
-                      simulationStage === "OWNER_INACTIVITY"
-                        ? "Days of Inactivity"
-                        : "Timeout Days"
-                    }
-                    id="simDays"
-                    type="number"
-                    min="1"
-                    placeholder="1"
-                    value={inactivityDays}
-                    onChange={(e) => setInactivityDays(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Submit */}
-                <div className="sm:col-span-3 flex justify-end mt-2">
+                <div className="flex justify-end pt-3">
                   <Button
                     type="submit"
                     loading={simLoading}
-                    variant="outline"
+                    variant="primary"
+                    icon={Play}
                     className="w-full sm:w-auto"
                   >
                     Simulate Workflow Stage
@@ -226,33 +240,31 @@ const Dashboard = () => {
               </form>
             </div>
 
-            {/* Admin notes */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 transition-colors duration-200">
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-3">
-                Verification Rules
-              </h3>
+            {/* Verification Rules Guide */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-7 shadow-xs transition-colors duration-200 flex flex-col justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 mb-4">
+                  <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  Stage Progression Mechanics
+                </h3>
 
-              <ul className="text-xs text-slate-650 dark:text-slate-400 space-y-2.5 list-disc pl-4 leading-relaxed">
-                <li>
-                  <strong>Initial Owner Inactivity:</strong> moves the
-                  owner's <code>lastActiveAt</code> into the past and
-                  runs the inactivity processor.
-                </li>
+                <div className="space-y-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/50 border border-slate-150 dark:border-slate-800">
+                    <strong className="text-slate-900 dark:text-slate-200 block mb-0.5">Stage 1: Owner Inactivity</strong>
+                    Adjusts owner's <code className="text-xs font-mono text-blue-600 dark:text-blue-400">lastActiveAt</code> into the past, triggering initial verification warnings.
+                  </div>
 
-                <li>
-                  <strong>Owner Response Timeout:</strong> moves the
-                  active VerificationCase's{" "}
-                  <code>ownerResponseDeadline</code> into the past,
-                  causing the nominee confirmation stage to begin.
-                </li>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/50 border border-slate-150 dark:border-slate-800">
+                    <strong className="text-slate-900 dark:text-slate-200 block mb-0.5">Stage 2: Owner Timeout</strong>
+                    Expires <code className="text-xs font-mono text-amber-600 dark:text-amber-400">ownerResponseDeadline</code>, commencing nominee identity verification phase.
+                  </div>
 
-                <li>
-                  <strong>Nominee Response Timeout:</strong> moves the
-                  active VerificationCase's{" "}
-                  <code>nomineeResponseDeadline</code> into the past,
-                  causing automatic asset release processing.
-                </li>
-              </ul>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/50 border border-slate-150 dark:border-slate-800">
+                    <strong className="text-slate-900 dark:text-slate-200 block mb-0.5">Stage 3: Nominee Timeout</strong>
+                    Expires <code className="text-xs font-mono text-emerald-600 dark:text-emerald-400">nomineeResponseDeadline</code>, authorizing automated asset release.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </>

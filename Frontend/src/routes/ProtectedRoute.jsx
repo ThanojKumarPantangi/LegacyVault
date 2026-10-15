@@ -16,8 +16,9 @@ const ProtectedRoute = () => {
 
   if (loading && !user) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <Spinner size="lg" className="text-blue-500" />
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-3">
+        <Spinner size="lg" className="text-blue-600 dark:text-blue-400" />
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Loading session...</span>
       </div>
     );
   }

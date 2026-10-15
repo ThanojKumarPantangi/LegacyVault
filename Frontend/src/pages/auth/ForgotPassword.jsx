@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import apiClient from "../../services/apiClient.js";
 import Input from "../../components/common/Input.jsx";
 import Button from "../../components/common/Button.jsx";
-import { Mail, CheckCircle2, ArrowLeft, Shield } from "lucide-react";
+import { Mail, CheckCircle2, ArrowLeft, ArrowRight, AlertCircle } from "lucide-react";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -34,67 +34,65 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 transition-colors duration-200">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 shadow-xl shadow-slate-950/5 dark:shadow-slate-950/50 flex flex-col">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-2 rounded-lg">
-            <Shield className="w-5 h-5 text-white" />
+    <div>
+      <div className="mb-6 text-center">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+          Reset Your Password
+        </h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          Enter your registered email address to receive a secure recovery link
+        </p>
+      </div>
+
+      {!success ? (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs rounded-lg flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <Input
+            label="Account Email Address"
+            id="email"
+            type="email"
+            icon={Mail}
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+
+          <Button type="submit" loading={loading} className="w-full mt-2" size="md">
+            <span>Send Reset Link</span>
+            <ArrowRight className="w-4 h-4 ml-1" />
+          </Button>
+        </form>
+      ) : (
+        <div className="text-center flex flex-col items-center py-2">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mb-4">
+            <CheckCircle2 className="w-6 h-6" />
           </div>
-          <span className="font-extrabold text-slate-900 dark:text-white text-lg tracking-wide">
-            LegacyVault
-          </span>
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Reset Link Sent</h3>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 mb-4 leading-relaxed max-w-sm">
+            {message}
+          </p>
         </div>
+      )}
 
-        {!success ? (
-          <>
-            <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-100 text-center">
-              Forgot Password
-            </h2>
-            <p className="text-sm text-slate-500 mt-2 mb-6 text-center leading-relaxed">
-              Enter your email address and we'll send you a link to reset your password.
-            </p>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                label="Email Address"
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                error={error}
-                required
-              />
-
-              <Button type="submit" loading={loading} className="w-full flex items-center justify-center gap-2 mt-2">
-                <Mail className="w-4 h-4" />
-                Send Reset Link
-              </Button>
-            </form>
-          </>
-        ) : (
-          <div className="text-center flex flex-col items-center">
-            <CheckCircle2 className="w-16 h-16 text-emerald-500 mb-6 animate-bounce" />
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Reset Link Sent</h2>
-            <p className="text-sm text-slate-650 dark:text-slate-400 mt-2 mb-6 leading-relaxed">
-              {message}
-            </p>
-          </div>
-        )}
-
-        <div className="mt-8 border-t border-slate-150 dark:border-slate-800/80 pt-5 text-center">
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Login
-          </Link>
-        </div>
+      <div className="mt-6 border-t border-slate-100 dark:border-slate-800 pt-4 text-center">
+        <Link
+          to="/login"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Return to Sign In
+        </Link>
       </div>
     </div>
   );
 };
 
 export default ForgotPassword;
+

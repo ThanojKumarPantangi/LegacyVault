@@ -22,10 +22,10 @@ const AdminLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navigation = [
-    { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+    { name: "Control Center", href: "/admin/dashboard", icon: LayoutDashboard },
     { name: "Users Directory", href: "/admin/users", icon: Users },
     { name: "Verification Cases", href: "/admin/access-requests", icon: ShieldCheck },
-    { name: "Audit Logging", href: "/admin/audit-logs", icon: History },
+    { name: "Audit Trail", href: "/admin/audit-logs", icon: History },
   ];
 
   const handleLogout = () => {
@@ -35,61 +35,86 @@ const AdminLayout = () => {
 
   const isActive = (path) => location.pathname === path;
 
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "AD";
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col md:flex-row transition-colors duration-200">
       {/* Mobile Navbar */}
-      <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between w-full z-20">
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-emerald-500" />
-          <span className="font-bold text-slate-900 dark:text-slate-100 text-sm tracking-wide">
-            LegacyVault (Admin)
+      <header className="md:hidden sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between w-full z-40">
+        <Link to="/admin/dashboard" className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white">
+            <Shield className="w-4 h-4" />
+          </div>
+          <span className="font-bold text-slate-900 dark:text-slate-100 text-sm tracking-tight">
+            LegacyVault <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400">Admin</span>
           </span>
-        </div>
-        <div className="flex items-center gap-3">
+        </Link>
+        <div className="flex items-center gap-2">
           <ThemeToggle />
           <button
+            type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 p-1 cursor-pointer"
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 cursor-pointer"
+            aria-label="Toggle navigation menu"
           >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
-      </div>
+      </header>
 
       {/* Sidebar Navigation */}
-      <div
-        className={`fixed md:sticky top-0 left-0 w-64 h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-5 flex flex-col z-30 transition-transform duration-300 transform md:transform-none ${
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      <aside
+        className={`fixed md:sticky top-0 left-0 w-64 h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 md:p-5 flex flex-col z-50 transition-transform duration-200 ease-in-out md:translate-x-0 ${
+          mobileMenuOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         }`}
       >
         {/* Brand Header */}
-        <div className="hidden md:flex items-center justify-between mb-8">
-          <div className="flex items-center gap-2.5">
-            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-2 rounded-lg">
-              <Shield className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <Link to="/admin/dashboard" className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shadow-xs">
+              <Shield className="w-4.5 h-4.5" />
             </div>
-            <span className="font-extrabold text-slate-900 dark:text-white text-lg tracking-wide">
-              LegacyVault
-            </span>
+            <div className="flex flex-col">
+              <span className="font-bold text-slate-900 dark:text-white text-base tracking-tight leading-tight">
+                LegacyVault
+              </span>
+              <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                System Admin
+              </span>
+            </div>
+          </Link>
+          <div className="hidden md:block">
+            <ThemeToggle />
           </div>
-          <ThemeToggle />
         </div>
 
         {/* Admin Quick Info */}
-        <div className="mb-6 p-4 rounded-xl bg-slate-100 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800">
-          <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-            Signed in as
-          </p>
-          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-1 truncate">
-            {user?.name}
-          </h4>
-          <span className="inline-block bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-emerald-500/20 mt-1.5">
-            {user?.role}
-          </span>
+        <div className="mb-6 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-600/20 font-bold text-xs flex items-center justify-center shrink-0">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+              {user?.name}
+            </h4>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-semibold tracking-wider">
+                Admin Console
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Links */}
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-1 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -98,39 +123,42 @@ const AdminLayout = () => {
                 key={item.name}
                 to={item.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer ${
                   active
-                    ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/10"
-                    : "text-slate-550 dark:text-slate-450 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-205"
+                    ? "bg-emerald-600 text-white shadow-xs font-semibold"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100"
                 }`}
               >
-                <Icon className={`w-4 h-4 ${active ? "text-white" : "text-slate-500 dark:text-slate-400"}`} />
-                {item.name}
+                <Icon className={`w-4 h-4 shrink-0 ${active ? "text-white" : "text-slate-400 dark:text-slate-500"}`} />
+                <span className="truncate">{item.name}</span>
               </Link>
             );
           })}
         </nav>
 
         {/* Logout */}
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-red-500/10 hover:text-red-650 dark:hover:text-red-400 transition-all duration-150 mt-auto cursor-pointer"
-        >
-          <LogOut className="w-4 h-4" />
-          Sign Out
-        </button>
-      </div>
+        <div className="pt-4 mt-auto border-t border-slate-100 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/30 dark:hover:text-rose-400 transition-colors cursor-pointer"
+          >
+            <LogOut className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
 
       {/* Mobile backdrop */}
       {mobileMenuOpen && (
         <div
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 bg-slate-950/60 z-25 md:hidden"
+          className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-40 md:hidden"
         />
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 p-6 md:p-10 overflow-y-auto max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
         <Outlet />
       </main>
     </div>
@@ -138,3 +166,4 @@ const AdminLayout = () => {
 };
 
 export default AdminLayout;
+

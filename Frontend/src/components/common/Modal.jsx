@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 
@@ -17,42 +17,66 @@ const Modal = ({
     xl: "max-w-4xl",
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && isOpen && onClose) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
           {/* Backdrop Overlay */}
           <motion.div
-            className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm"
+            className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-xs"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             onClick={closeOnOverlayClick ? onClose : undefined}
           />
 
           {/* Modal Container */}
           <motion.div
-            className={`relative w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-950/20 dark:shadow-slate-950/50 overflow-hidden flex flex-col z-10 ${sizes[size]}`}
-            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={title ? "modal-title" : undefined}
+            className={`relative w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden flex flex-col z-10 my-auto ${sizes[size]}`}
+            initial={{ scale: 0.97, opacity: 0, y: 8 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 10 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            exit={{ scale: 0.97, opacity: 0, y: 8 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50">
               {title && (
-                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h3>
+                <h3 id="modal-title" className="text-base font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                  {title}
+                </h3>
               )}
               <button
+                type="button"
                 onClick={onClose}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-100 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 cursor-pointer"
+                aria-label="Close dialog"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Content Body */}
-            <div className="px-6 py-6 overflow-y-auto max-h-[75vh]">
+            <div className="px-6 py-5 overflow-y-auto max-h-[calc(85vh-5rem)]">
               {children}
             </div>
           </motion.div>
@@ -63,3 +87,4 @@ const Modal = ({
 };
 
 export default Modal;
+

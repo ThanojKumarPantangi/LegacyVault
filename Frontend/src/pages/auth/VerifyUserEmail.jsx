@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import apiClient from "../../services/apiClient.js";
-import { CheckCircle2, XCircle, Loader2, ArrowRight } from "lucide-react";
+import { CheckCircle2, XCircle, ArrowRight } from "lucide-react";
 import Button from "../../components/common/Button.jsx";
+import Spinner from "../../components/common/Spinner.jsx";
 
 const VerifyUserEmail = () => {
   const [searchParams] = useSearchParams();
@@ -32,51 +33,60 @@ const VerifyUserEmail = () => {
   }, [token]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 transition-colors duration-200">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 shadow-xl shadow-slate-950/5 dark:shadow-slate-950/50 flex flex-col items-center text-center">
-        {status === "loading" && (
-          <>
-            <Loader2 className="w-16 h-16 text-blue-500 animate-spin mb-6" />
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Verifying Account</h2>
-            <p className="text-sm text-slate-500 mt-2">Please wait while we activate your LegacyVault account...</p>
-          </>
-        )}
+    <div className="flex flex-col items-center text-center py-2">
+      {status === "loading" && (
+        <div className="py-6 flex flex-col items-center">
+          <Spinner size="lg" className="text-blue-600 dark:text-blue-400 mb-4" />
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+            Verifying Your Account
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-xs leading-relaxed">
+            Please wait while we validate your secure token signature and activate your vault...
+          </p>
+        </div>
+      )}
 
-        {status === "success" && (
-          <>
-            <CheckCircle2 className="w-16 h-16 text-emerald-500 mb-6 animate-bounce" />
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Email Verified!</h2>
-            <p className="text-sm text-slate-650 dark:text-slate-400 mt-2 mb-6 leading-relaxed">
-              {message}
-            </p>
-            <Link to="/login" className="w-full">
-              <Button className="w-full flex items-center justify-center gap-2">
-                Continue to Login
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
-          </>
-        )}
+      {status === "success" && (
+        <>
+          <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mb-4">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+            Email Verified Successfully!
+          </h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 mb-6 leading-relaxed max-w-sm">
+            {message} Your account is now active and ready to securely manage digital inheritances.
+          </p>
+          <Link to="/login" className="w-full">
+            <Button className="w-full" size="md">
+              <span>Continue to Sign In</span>
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </Link>
+        </>
+      )}
 
-        {status === "error" && (
-          <>
-            <XCircle className="w-16 h-16 text-red-500 mb-6" />
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Verification Failed</h2>
-            <p className="text-sm text-slate-650 dark:text-slate-400 mt-2 mb-6 leading-relaxed">
-              {message}
-            </p>
-            <div className="flex flex-col gap-3 w-full">
-              <Link to="/login" className="w-full">
-                <Button variant="secondary" className="w-full">
-                  Back to Login
-                </Button>
-              </Link>
-            </div>
-          </>
-        )}
-      </div>
+      {status === "error" && (
+        <>
+          <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 flex items-center justify-center mb-4">
+            <XCircle className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+            Verification Unsuccessful
+          </h2>
+          <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 mb-6 leading-relaxed max-w-sm">
+            {message}
+          </p>
+          <Link to="/login" className="w-full">
+            <Button variant="secondary" className="w-full" size="md">
+              Back to Sign In
+            </Button>
+          </Link>
+        </>
+      )}
     </div>
   );
 };
 
 export default VerifyUserEmail;
+
