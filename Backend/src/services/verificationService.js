@@ -12,11 +12,7 @@ import {
   sendOwnerAvailableConfirmation,
   sendNomineeAvailabilityCheck,
   sendNomineeOwnerAvailableNotification,
-  sendAssetReleaseNotification,
-  sendNomineeNotification,
-  sendAccessRequestedNotification,
-  sendAccessApprovedNotification,
-  sendAccessRejectedNotification,
+  sendReleasedAssetsEmail,
 } from "./notificationService.js";
 import { logAuditEvent } from "./auditService.js";
 
@@ -25,17 +21,23 @@ const hashToken = (token) => {
 };
 
 /**
- * Idempotently authorize assets assigned to a nominee inside a policy
+ * Idempotently authorize assets assigned to a nominee inside a policy.
+ * VerificationService automatically creates/updates this record internally.
  */
 export const authorizeAssetReleaseForCase = async (vCase) => {
   try {
     const policy = await Policy.findById(vCase.policyId).populate("nomineeId ownerId");
     if (!policy) return;
 
-    // Strict validation: Nominee must exist and belong to the correct owner
+    // Strict validation: Nominee must exist, be ACTIVE, verified, and belong to the correct owner
     const nominee = await Nominee.findById(vCase.nomineeId);
-    if (!nominee || nominee.ownerId.toString() !== vCase.ownerId.toString()) {
-      console.warn(`[AUTHORIZATION DENIED] Nominee ${vCase.nomineeId} does not belong to owner ${vCase.ownerId}`);
+    if (
+      !nominee ||
+      nominee.status !== "ACTIVE" ||
+      nominee.emailVerified !== true ||
+      nominee.ownerId.toString() !== vCase.ownerId.toString()
+    ) {
+      console.warn(`[AUTHORIZATION DENIED] Nominee ${vCase.nomineeId} is not active, verified, or does not belong to owner ${vCase.ownerId}`);
       return;
     }
 
@@ -80,13 +82,45 @@ export const authorizeAssetReleaseForCase = async (vCase) => {
 
     // Only transition and notify if authorization succeeded for ALL assets
     if (allSucceeded && assets.length > 0) {
-      // Transition from ASSET_RELEASE_AUTHORIZED to RELEASED conditionally
+      // 1. Prepare attachments for files assigned to this policy
+      const attachments = [];
+      for (const assetId of assets) {
+        try {
+          const asset = await Asset.findOne({ _id: assetId, ownerId: vCase.ownerId });
+          if (asset && asset.fileMetadata && asset.fileMetadata.filename) {
+            const decryptedFile = await getDecryptedAssetFile(asset);
+            attachments.push({
+              name: decryptedFile.originalName || asset.fileMetadata.originalName,
+              content: decryptedFile.buffer.toString("base64")
+            });
+          }
+        } catch (fileErr) {
+          // Log failure but do not crash the entire release workflow
+          console.error(`[RELEASE EMAIL] Failed to fetch/decrypt file for asset ${assetId}:`, fileErr.message);
+        }
+      }
+
+      // 2. Send the email if not already sent
+      let emailSentAt = vCase.releaseNotificationSentAt || null;
+      if (!emailSentAt && policy.nomineeId) {
+        try {
+          await sendReleasedAssetsEmail(policy.nomineeId.email, policy.nomineeId.name, attachments);
+          emailSentAt = new Date();
+        } catch (emailErr) {
+          console.error("Failed to send release email:", emailErr.message);
+          // Do not transition to RELEASED and return early to allow retry on next run
+          return;
+        }
+      }
+
+      // 3. Transition from ASSET_RELEASE_AUTHORIZED to RELEASED conditionally
       const finalizedCase = await VerificationCase.findOneAndUpdate(
         { _id: vCase._id, status: "ASSET_RELEASE_AUTHORIZED" },
         {
           $set: {
             status: "RELEASED",
-            completedAt: new Date()
+            completedAt: new Date(),
+            releaseNotificationSentAt: emailSentAt
           },
           $unset: {
             ownerTokenHash: 1,
@@ -116,17 +150,6 @@ export const authorizeAssetReleaseForCase = async (vCase) => {
           resourceId: policy._id,
           metadata: { ownerId: vCase.ownerId }
         });
-
-        // Send release notification email once
-        if (!finalizedCase.releaseNotificationSentAt && policy.nomineeId) {
-          try {
-            await sendAssetReleaseNotification(policy.nomineeId.email, policy.nomineeId.name);
-            finalizedCase.releaseNotificationSentAt = new Date();
-            await finalizedCase.save();
-          } catch (emailErr) {
-            console.error("Failed to send release email:", emailErr.message);
-          }
-        }
       }
     }
   } catch (err) {
@@ -136,14 +159,22 @@ export const authorizeAssetReleaseForCase = async (vCase) => {
 
 /**
  * Scheduled job logic checking user inactivity.
+ * Supports running for all active policies or a single owner (simulation).
  */
-export const processInactiveUsers = async () => {
+export const processInactiveUsers = async (ownerId = null) => {
   let triggeredCount = 0;
 
   // 1. Scan policies where status is "ACTIVE"
-  const policies = await Policy.find({ status: "ACTIVE" }).populate("nomineeId");
+  const policiesQuery = ownerId ? { ownerId, status: "ACTIVE" } : { status: "ACTIVE" };
+  const policies = await Policy.find(policiesQuery).populate("nomineeId");
 
   for (const policy of policies) {
+    const nominee = policy.nomineeId;
+    // Strictly verify that nominee is ACTIVE and email verified before triggering workflow
+    if (!nominee || nominee.status !== "ACTIVE" || nominee.emailVerified !== true) {
+      continue;
+    }
+
     const owner = await User.findOne({ _id: policy.ownerId, role: "USER" });
     if (!owner) continue;
 
@@ -153,7 +184,6 @@ export const processInactiveUsers = async () => {
 
     if (timeDiffDays >= inactivityDays) {
       // Check if an active case exists for this policy.
-      // Active states are ONLY: OWNER_CONFIRMATION_PENDING, NOMINEE_CONFIRMATION_PENDING, ASSET_RELEASE_AUTHORIZED
       const existingCase = await VerificationCase.findOne({
         policyId: policy._id,
         status: { $in: ["OWNER_CONFIRMATION_PENDING", "NOMINEE_CONFIRMATION_PENDING", "ASSET_RELEASE_AUTHORIZED"] }
@@ -169,7 +199,7 @@ export const processInactiveUsers = async () => {
         const vCase = new VerificationCase({
           ownerId: owner._id,
           policyId: policy._id,
-          nomineeId: policy.nomineeId._id,
+          nomineeId: nominee._id,
           status: "OWNER_CONFIRMATION_PENDING",
           ownerTokenHash,
           ownerResponseDeadline,
@@ -211,10 +241,10 @@ export const processInactiveUsers = async () => {
 
   // 2. Process active cases that need transitions
   // A. Check Owner Response Deadlines
-  const ownerPendingCases = await VerificationCase.find({
-    status: "OWNER_CONFIRMATION_PENDING",
-    ownerResponseDeadline: { $lte: new Date() }
-  });
+  const ownerPendingQuery = ownerId
+    ? { ownerId, status: "OWNER_CONFIRMATION_PENDING", ownerResponseDeadline: { $lte: new Date() } }
+    : { status: "OWNER_CONFIRMATION_PENDING", ownerResponseDeadline: { $lte: new Date() } };
+  const ownerPendingCases = await VerificationCase.find(ownerPendingQuery);
 
   for (const vCase of ownerPendingCases) {
     const policy = await Policy.findById(vCase.policyId).populate("nomineeId ownerId");
@@ -257,7 +287,7 @@ export const processInactiveUsers = async () => {
       try {
         const checkUrlAvailable = `${process.env.CLIENT_URL || "http://localhost:5173"}/verify-respond?token=${rawNomineeToken}&type=nominee&choice=available`;
         const checkUrlUnavailable = `${process.env.CLIENT_URL || "http://localhost:5173"}/verify-respond?token=${rawNomineeToken}&type=nominee&choice=unavailable`;
-        
+
         await sendNomineeAvailabilityCheck(
           nominee.email,
           nominee.name,
@@ -280,10 +310,10 @@ export const processInactiveUsers = async () => {
   }
 
   // B. Check Nominee Response Deadlines (Timeout escalation)
-  const nomineePendingCases = await VerificationCase.find({
-    status: "NOMINEE_CONFIRMATION_PENDING",
-    nomineeResponseDeadline: { $lte: new Date() }
-  });
+  const nomineePendingQuery = ownerId
+    ? { ownerId, status: "NOMINEE_CONFIRMATION_PENDING", nomineeResponseDeadline: { $lte: new Date() } }
+    : { status: "NOMINEE_CONFIRMATION_PENDING", nomineeResponseDeadline: { $lte: new Date() } };
+  const nomineePendingCases = await VerificationCase.find(nomineePendingQuery);
 
   for (const vCase of nomineePendingCases) {
     // Atomically transition status from NOMINEE_CONFIRMATION_PENDING to ASSET_RELEASE_AUTHORIZED
@@ -315,9 +345,10 @@ export const processInactiveUsers = async () => {
   }
 
   // C. Retry ASSET_RELEASE_AUTHORIZED cases (retries failed releases)
-  const authorizedCases = await VerificationCase.find({
-    status: "ASSET_RELEASE_AUTHORIZED"
-  });
+  const authorizedQuery = ownerId
+    ? { ownerId, status: "ASSET_RELEASE_AUTHORIZED" }
+    : { status: "ASSET_RELEASE_AUTHORIZED" };
+  const authorizedCases = await VerificationCase.find(authorizedQuery);
 
   for (const vCase of authorizedCases) {
     await authorizeAssetReleaseForCase(vCase);
@@ -330,7 +361,7 @@ export const processInactiveUsers = async () => {
  * Nominee: Discover inheritances triggered by owner inactivity.
  */
 export const getAvailableInheritancesForNominee = async (nomineeUserId) => {
-  const nominees = await Nominee.find({ nomineeUserId });
+  const nominees = await Nominee.find({ nomineeUserId, status: "ACTIVE", emailVerified: true });
   const inheritances = [];
 
   for (const nominee of nominees) {
@@ -607,226 +638,17 @@ export const respondNomineeAvailability = async (token, choice) => {
 };
 
 /**
- * Nominee: Request access to an assigned asset.
- */
-export const requestAccessForNominee = async (nomineeUserId, nomineeId, assetId) => {
-  // Verify Nominee entry exists and belongs to the nominee
-  const nominee = await Nominee.findOne({ _id: nomineeId, nomineeUserId });
-  if (!nominee) {
-    const err = new Error("Nominee mapping not found or unauthorized");
-    err.statusCode = 404;
-    err.errorCode = "NOMINEE_NOT_FOUND";
-    throw err;
-  }
-
-  // Verify there is an active triggered verification case for this owner
-  const vCase = await VerificationCase.findOne({
-    ownerId: nominee.ownerId,
-    status: { $in: ["VERIFICATION_REQUIRED", "NOMINEE_REQUESTED", "ADMIN_REVIEW"] },
-  });
-
-  if (!vCase) {
-    const err = new Error("No active verification workflow found for this owner");
-    err.statusCode = 400;
-    err.errorCode = "NO_ACTIVE_VERIFICATION";
-    throw err;
-  }
-
-  // Verify asset belongs to owner and is assigned to nominee in policy
-  const policy = await Policy.findOne({
-    ownerId: nominee.ownerId,
-    nomineeId: nominee._id,
-    assets: assetId,
-    status: "ACTIVE",
-  });
-
-  if (!policy) {
-    const err = new Error("Asset is not assigned to you or policy is inactive");
-    err.statusCode = 400;
-    err.errorCode = "UNAUTHORIZED_ASSET_REQUEST";
-    throw err;
-  }
-
-  // Check duplicate access request
-  const existingRequest = await AccessRequest.findOne({
-    nomineeId: nominee._id,
-    assetId,
-    status: { $in: ["PENDING", "ADMIN_REVIEW", "APPROVED", "RELEASED"] },
-  });
-
-  if (existingRequest) {
-    const err = new Error("Access request already submitted or approved for this asset");
-    err.statusCode = 400;
-    err.errorCode = "DUPLICATE_REQUEST";
-    throw err;
-  }
-
-  // Create AccessRequest
-  const request = new AccessRequest({
-    ownerId: nominee.ownerId,
-    nomineeId: nominee._id,
-    assetId,
-    verificationCaseId: vCase._id,
-    status: "ADMIN_REVIEW",
-  });
-
-  await request.save();
-
-  // Update VerificationCase state
-  vCase.status = "NOMINEE_REQUESTED";
-  await vCase.save();
-
-  // Notify Administrators (we send to any ADMIN role users in database)
-  const admins = await User.find({ role: "ADMIN" }).select("email");
-  const adminEmails = admins.map((a) => a.email);
-  const asset = await Asset.findById(assetId);
-  const owner = await User.findById(nominee.ownerId);
-
-  if (adminEmails.length > 0 && asset && owner) {
-    await sendAccessRequestedNotification(
-      adminEmails,
-      nominee.name,
-      owner.name,
-      asset.title
-    );
-  }
-
-  // Audit log
-  await logAuditEvent({
-    actorId: nomineeUserId,
-    action: "ACCESS_REQUESTED",
-    resourceType: "AccessRequest",
-    resourceId: request._id,
-    metadata: { nomineeId: nominee._id, assetId },
-  });
-
-  return request;
-};
-
-/**
- * Admin: Retrieve all nominee access requests.
- */
-export const getAccessRequestsForAdmin = async () => {
-  return await AccessRequest.find()
-    .populate({ path: "ownerId", select: "name email" })
-    .populate({ path: "nomineeId", select: "name email relationship" })
-    .populate({ path: "assetId", select: "title category description" })
-    .sort({ createdAt: -1 });
-};
-
-/**
- * Admin: Approve or Reject a nominee request.
- */
-export const reviewAccessRequest = async (adminId, requestId, action, rejectReason) => {
-  const request = await AccessRequest.findById(requestId);
-  if (!request) {
-    const err = new Error("Access request not found");
-    err.statusCode = 404;
-    err.errorCode = "REQUEST_NOT_FOUND";
-    throw err;
-  }
-
-  if (request.status !== "ADMIN_REVIEW" && request.status !== "PENDING") {
-    const err = new Error("Request has already been processed");
-    err.statusCode = 400;
-    err.errorCode = "REQUEST_ALREADY_PROCESSED";
-    throw err;
-  }
-
-  const nominee = await Nominee.findById(request.nomineeId);
-  const asset = await Asset.findById(request.assetId);
-  const owner = await User.findById(request.ownerId);
-  const vCase = await VerificationCase.findById(request.verificationCaseId);
-
-  if (action === "APPROVE") {
-    request.status = "APPROVED";
-    request.reviewedAt = new Date();
-    request.reviewedBy = adminId;
-    await request.save();
-
-    // Update VerificationCase
-    if (vCase) {
-      vCase.status = "APPROVED";
-      vCase.reviewedAt = new Date();
-      await vCase.save();
-    }
-
-    if (nominee && asset && owner) {
-      await sendAccessApprovedNotification(
-        nominee.email,
-        nominee.name,
-        asset.title,
-        owner.name
-      );
-    }
-
-    // Audit log
-    await logAuditEvent({
-      actorId: adminId,
-      action: "ACCESS_APPROVED",
-      resourceType: "AccessRequest",
-      resourceId: request._id,
-      metadata: { nomineeId: request.nomineeId, assetId: request.assetId },
-    });
-  } else if (action === "REJECT") {
-    request.status = "REJECTED";
-    request.reviewedAt = new Date();
-    request.reviewedBy = adminId;
-    await request.save();
-
-    // Update VerificationCase
-    if (vCase) {
-      vCase.status = "REJECTED";
-      vCase.reviewedAt = new Date();
-      await vCase.save();
-    }
-
-    if (nominee && asset && owner) {
-      await sendAccessRejectedNotification(
-        nominee.email,
-        nominee.name,
-        asset.title,
-        owner.name,
-        rejectReason
-      );
-    }
-
-    // Audit log
-    await logAuditEvent({
-      actorId: adminId,
-      action: "ACCESS_REJECTED",
-      resourceType: "AccessRequest",
-      resourceId: request._id,
-      metadata: { nomineeId: request.nomineeId, assetId: request.assetId, reason: rejectReason },
-    });
-  } else {
-    const err = new Error("Invalid review action. Must be APPROVE or REJECT.");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  return request;
-};
-
-/**
- * Nominee: Retrieve decypted asset contents. Enforces strict authorization.
+ * Nominee: Retrieve decrypted asset contents. Enforces strict runtime authorization.
  */
 export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
-  // Find Nominee profiles matching this nomineeUserId
-  const nominees = await Nominee.find({ nomineeUserId });
-  const nomineeIds = nominees.map((n) => n._id.toString());
-
   // Confirm approved or already-released AccessRequest exists
   const request = await AccessRequest.findOne({
-    nomineeId: { $in: nomineeIds },
     assetId,
     status: { $in: ["APPROVED", "RELEASED"] },
   });
 
   if (!request) {
-    const err = new Error(
-      "Access denied. No approved request found for this asset."
-    );
+    const err = new Error("Access denied. No approved request found for this asset.");
     err.statusCode = 403;
     err.errorCode = "ACCESS_DENIED";
     throw err;
@@ -834,8 +656,13 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
 
   // Strict backend security checks
   const nominee = await Nominee.findOne({ _id: request.nomineeId, nomineeUserId });
-  if (!nominee || nominee.ownerId.toString() !== request.ownerId.toString()) {
-    const err = new Error("Access denied. Nominee profile mismatched or unauthorized.");
+  if (
+    !nominee ||
+    nominee.status !== "ACTIVE" ||
+    nominee.emailVerified !== true ||
+    nominee.ownerId.toString() !== request.ownerId.toString()
+  ) {
+    const err = new Error("Access denied. Nominee profile mismatched, inactive, or unauthorized.");
     err.statusCode = 403;
     err.errorCode = "ACCESS_DENIED";
     throw err;
@@ -888,7 +715,6 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
     request.releasedAt = new Date();
     await request.save();
 
-    // Audit only when the asset is initially released
     await logAuditEvent({
       actorId: nomineeUserId,
       action: "ASSET_RELEASED",
@@ -905,23 +731,17 @@ export const releaseAssetToNominee = async (nomineeUserId, assetId) => {
 };
 
 /**
- * Nominee: Download decrypted file. Enforces strict authorization.
+ * Nominee: Download decrypted file. Enforces strict runtime authorization.
  */
 export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
-  const nominees = await Nominee.find({ nomineeUserId });
-  const nomineeIds = nominees.map((n) => n._id.toString());
-
   // Access check
   const request = await AccessRequest.findOne({
-    nomineeId: { $in: nomineeIds },
     assetId,
     status: { $in: ["APPROVED", "RELEASED"] },
   });
 
   if (!request) {
-    const err = new Error(
-      "Access denied. No approved request found for this file."
-    );
+    const err = new Error("Access denied. No approved request found for this file.");
     err.statusCode = 403;
     err.errorCode = "ACCESS_DENIED";
     throw err;
@@ -929,8 +749,13 @@ export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
 
   // Strict backend security checks
   const nominee = await Nominee.findOne({ _id: request.nomineeId, nomineeUserId });
-  if (!nominee || nominee.ownerId.toString() !== request.ownerId.toString()) {
-    const err = new Error("Access denied. Nominee profile mismatched or unauthorized.");
+  if (
+    !nominee ||
+    nominee.status !== "ACTIVE" ||
+    nominee.emailVerified !== true ||
+    nominee.ownerId.toString() !== request.ownerId.toString()
+  ) {
+    const err = new Error("Access denied. Nominee profile mismatched, inactive, or unauthorized.");
     err.statusCode = 403;
     err.errorCode = "ACCESS_DENIED";
     throw err;
@@ -966,29 +791,8 @@ export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
     throw err;
   }
 
-  if (
-    !asset.fileMetadata ||
-    !asset.fileMetadata.filename
-  ) {
-    const err = new Error("No file associated with this asset");
-    err.statusCode = 404;
-    err.errorCode = "FILE_NOT_FOUND";
-    throw err;
-  }
+  const fileData = await getDecryptedAssetFile(asset);
 
-  // Get encrypted file from Supabase Storage
-  const encryptedBuffer = await getFile(
-    asset.fileMetadata.filename
-  );
-
-  // Decrypt file in backend
-  const decryptedBuffer = decryptBuffer(
-    encryptedBuffer,
-    asset.fileMetadata.iv,
-    asset.fileMetadata.tag
-  );
-
-  // Audit log
   await logAuditEvent({
     actorId: nomineeUserId,
     action: "ASSET_DOWNLOADED",
@@ -1000,9 +804,44 @@ export const releaseAssetFileToNominee = async (nomineeUserId, assetId) => {
     },
   });
 
+  return fileData;
+};
+
+/**
+ * Reusable logic to get and decrypt an asset's file.
+ */
+export const getDecryptedAssetFile = async (asset) => {
+  if (!asset.fileMetadata || !asset.fileMetadata.filename) {
+    const err = new Error("No file associated with this asset");
+    err.statusCode = 404;
+    err.errorCode = "FILE_NOT_FOUND";
+    throw err;
+  }
+
+  // Get encrypted file from Supabase Storage
+  const encryptedBuffer = await getFile(asset.fileMetadata.filename);
+
+  // Decrypt file in backend
+  const decryptedBuffer = decryptBuffer(
+    encryptedBuffer,
+    asset.fileMetadata.iv,
+    asset.fileMetadata.tag
+  );
+
   return {
     buffer: decryptedBuffer,
     originalName: asset.fileMetadata.originalName,
     mimeType: asset.fileMetadata.mimeType,
   };
+};
+
+/**
+ * Admin: Retrieve all nominee access requests.
+ */
+export const getAccessRequestsForAdmin = async () => {
+  return await AccessRequest.find()
+    .populate({ path: "ownerId", select: "name email" })
+    .populate({ path: "nomineeId", select: "name email relationship" })
+    .populate({ path: "assetId", select: "title category description" })
+    .sort({ createdAt: -1 });
 };

@@ -14,20 +14,7 @@ export const fetchAvailableInheritances = createAsyncThunk(
   }
 );
 
-export const submitNomineeAccessRequest = createAsyncThunk(
-  "verification/submitNomineeAccessRequest",
-  async ({ nomineeId, assetId }, { rejectWithValue }) => {
-    try {
-      const response = await apiClient.post("/access-requests", {
-        nomineeId,
-        assetId,
-      });
-      return { response: response.data, nomineeId, assetId };
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
+// submitNomineeAccessRequest has been deprecated as assets release is fully automated.
 
 export const fetchReleasedAsset = createAsyncThunk(
   "verification/fetchReleasedAsset",
@@ -71,38 +58,7 @@ const verificationSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      // Submit Access Request
-      .addCase(submitNomineeAccessRequest.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(submitNomineeAccessRequest.fulfilled, (state, action) => {
-        state.loading = false;
-        const { nomineeId, assetId, response } = action.payload;
-        // Update request status for the asset locally in store
-        state.inheritances = state.inheritances.map((inh) => {
-          if (inh.nomineeId === nomineeId) {
-            return {
-              ...inh,
-              assets: inh.assets.map((asset) => {
-                if (asset._id === assetId) {
-                  return {
-                    ...asset,
-                    requestStatus: "ADMIN_REVIEW",
-                    requestId: response._id,
-                  };
-                }
-                return asset;
-              }),
-            };
-          }
-          return inh;
-        });
-      })
-      .addCase(submitNomineeAccessRequest.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
+      // submitNomineeAccessRequest reducers have been removed.
       // Fetch Released Asset Details
       .addCase(fetchReleasedAsset.pending, (state) => {
         state.loading = true;

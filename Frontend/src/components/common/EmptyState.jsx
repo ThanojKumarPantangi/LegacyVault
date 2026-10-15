@@ -10,9 +10,9 @@ const EmptyState = ({
   onAction,
 }) => {
   return (
-    <div className="flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-800 rounded-2xl bg-slate-900/20 max-w-md mx-auto my-6">
+    <div className="flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-250 dark:border-slate-800 rounded-2xl bg-slate-100/30 dark:bg-slate-900/20 max-w-md mx-auto my-6">
       {Icon && <Icon className="w-12 h-12 text-slate-500 mb-4" />}
-      <h3 className="text-base font-bold text-slate-200">{title}</h3>
+      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">{title}</h3>
       <p className="text-sm text-slate-500 mt-1 mb-5 leading-relaxed">{description}</p>
       {actionText && onAction && (
         <Button onClick={onAction} icon={Plus}>

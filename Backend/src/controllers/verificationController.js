@@ -11,27 +11,7 @@ export const getAvailableInheritances = asyncHandler(async (req, res) => {
   });
 });
 
-export const submitAccessRequest = asyncHandler(async (req, res) => {
-  const { nomineeId, assetId } = req.body;
-
-  if (!nomineeId || !assetId) {
-    const err = new Error("NomineeId and assetId are required");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const request = await verificationService.requestAccessForNominee(
-    req.user._id,
-    nomineeId,
-    assetId
-  );
-
-  res.status(201).json({
-    success: true,
-    message: "Access request submitted successfully for administrator review.",
-    data: request,
-  });
-});
+// submitAccessRequest is deprecated under the new automated release system.
 
 export const getReleasedAsset = asyncHandler(async (req, res) => {
   const asset = await verificationService.releaseAssetToNominee(

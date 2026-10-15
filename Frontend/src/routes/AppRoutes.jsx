@@ -14,6 +14,10 @@ import RoleRoute from "./RoleRoute.jsx";
 // Auth Pages
 import Login from "../pages/auth/Login.jsx";
 import Register from "../pages/auth/Register.jsx";
+import VerifyUserEmail from "../pages/auth/VerifyUserEmail.jsx";
+import VerifyNomineeEmail from "../pages/auth/VerifyNomineeEmail.jsx";
+import ForgotPassword from "../pages/auth/ForgotPassword.jsx";
+import ResetPassword from "../pages/auth/ResetPassword.jsx";
 
 // User Pages
 import UserDashboard from "../pages/user/Dashboard.jsx";
@@ -24,8 +28,6 @@ import UserAccessRequests from "../pages/user/AccessRequests.jsx";
 import UserProfile from "../pages/user/Profile.jsx";
 
 // Nominee Pages
-import NomineeDashboard from "../pages/nominee/Dashboard.jsx";
-import AvailableInheritances from "../pages/nominee/AvailableInheritances.jsx";
 import ReleasedAssets from "../pages/nominee/ReleasedAssets.jsx";
 
 // Admin Pages
@@ -47,6 +49,10 @@ const AppRoutes = () => {
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyUserEmail />} />
+        <Route path="/verify-nominee-email" element={<VerifyNomineeEmail />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
       </Route>
 
       {/* Public Verification Response Route (No Auth Guard / No Redirect) */}
@@ -70,8 +76,9 @@ const AppRoutes = () => {
         {/* Nominee Role Group */}
         <Route element={<RoleRoute allowedRole="NOMINEE" />}>
           <Route element={<NomineeLayout />}>
-            <Route path="/nominee/dashboard" element={<NomineeDashboard />} />
-            <Route path="/nominee/available" element={<AvailableInheritances />} />
+            <Route path="/nominee" element={<Navigate to="/nominee/released" replace />} />
+            <Route path="/nominee/dashboard" element={<Navigate to="/nominee/released" replace />} />
+            <Route path="/nominee/available" element={<Navigate to="/nominee/released" replace />} />
             <Route path="/nominee/released" element={<ReleasedAssets />} />
           </Route>
         </Route>

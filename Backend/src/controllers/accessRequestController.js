@@ -3,28 +3,7 @@ import { AccessRequest } from "../models/AccessRequest.js";
 import { Nominee } from "../models/Nominee.js";
 import * as verificationService from "../services/verificationService.js";
 
-export const createAccessRequest = asyncHandler(async (req, res) => {
-  const { nomineeId, assetId } = req.body;
-
-  if (!nomineeId || !assetId) {
-    const err = new Error("NomineeId and assetId are required");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  // Submit via service
-  const request = await verificationService.requestAccessForNominee(
-    req.user._id, // nomineeUserId
-    nomineeId,
-    assetId
-  );
-
-  res.status(201).json({
-    success: true,
-    message: "Access request submitted successfully.",
-    data: request,
-  });
-});
+// Manual access requests are deprecated and handled automatically by the inactivity workflow.
 
 export const getAccessRequests = asyncHandler(async (req, res) => {
   let filter = {};

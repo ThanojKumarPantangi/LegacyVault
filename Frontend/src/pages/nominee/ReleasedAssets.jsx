@@ -86,7 +86,7 @@ const ReleasedAssets = () => {
       ) : releasedItems.length === 0 ? (
         <EmptyState
           title="No Released Assets"
-          description="Your approved assets will show up here. Once an administrator approves your access request, you can decrypt details and download secure documents."
+          description="Your approved assets will show up here. Once the inheritance workflow automatically releases the assets, you can decrypt details and download secure documents."
           icon={KeyRound}
         />
       ) : (

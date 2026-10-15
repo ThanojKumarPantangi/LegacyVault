@@ -17,19 +17,27 @@ export const addNominee = asyncHandler(async (req, res) => {
     relationship,
   });
 
-  await logAuditEvent({
-    actorId: req.user._id,
-    action: "NOMINEE_ADDED",
-    resourceType: "Nominee",
-    resourceId: nominee._id,
-    ipAddress: req.ip,
-    userAgent: req.headers["user-agent"],
-  });
-
   res.status(201).json({
     success: true,
-    message: "Nominee added successfully",
+    message: "Nominee added successfully and verification email sent.",
     data: nominee,
+  });
+});
+
+export const verifyNomineeEmailController = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    const err = new Error("Verification token is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const result = await nomineeService.verifyNomineeEmail(token);
+
+  res.status(200).json({
+    success: true,
+    message: result.message,
   });
 });
 

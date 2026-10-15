@@ -89,9 +89,9 @@ export const setEmailHook = (hook) => {
 /**
  * Sends an email using Brevo's API. Logs to console as fallback in development if API key is missing.
  */
-export const sendEmail = async ({ to, subject, html }) => {
+export const sendEmail = async ({ to, subject, html, attachments }) => {
   if (emailHook) {
-    return await emailHook({ to, subject, html });
+    return await emailHook({ to, subject, html, attachments });
   }
   try {
     // Development/Test Fallback when Brevo configuration is missing
@@ -102,6 +102,7 @@ export const sendEmail = async ({ to, subject, html }) => {
           To: ${to}
           Subject: ${subject}
           Content: ${html.replace(/<[^>]*>/g, " ")}
+          Attachments count: ${attachments ? attachments.length : 0}
           ====================================
         `);
         return { message: "Simulated email sent successfully (dev fallback)" };
@@ -126,6 +127,11 @@ export const sendEmail = async ({ to, subject, html }) => {
       subject,
       htmlContent: html,
     };
+
+    if (attachments && attachments.length > 0) {
+      payload.attachment = attachments;
+      payload.attachments = attachments;
+    }
 
     const response = await axios.post(
       "https://api.brevo.com/v3/smtp/email",
@@ -228,23 +234,62 @@ export const sendNomineeOwnerAvailableNotification = async (nomineeEmail, nomine
 };
 
 /**
- * Sends notification when inheritance assets are released.
- * strictly NO document files, document contents, passwords, or encryption keys in the email.
+ * Sends released documents directly to the nominee via email.
  */
-export const sendAssetReleaseNotification = async (nomineeEmail, nomineeName) => {
-  const subject = "LegacyVault Inheritance Release Authorized";
+export const sendReleasedAssetsEmail = async (nomineeEmail, nomineeName, attachments = []) => {
+  const subject = "LegacyVault — Your Inheritance Documents Have Been Released";
   const html = generateEmailTemplate(`
     <h3>Hello ${nomineeName},</h3>
-    <p>Your authorized LegacyVault inheritance access is now available.</p>
+    <p>We are writing to inform you that the owner's configured inheritance workflow has completed.</p>
     
     <div class="info-box border-approved">
-      <p style="margin: 0;">Please log in to LegacyVault to access the assets that have been authorized for you.</p>
+      <p style="margin: 0;">The authorized inheritance documents have been released automatically after the required verification and timeout process. They are attached to this email.</p>
     </div>
     
-    <a href="${env.CLIENT_URL || "http://localhost:5173"}/login" class="btn" style="background-color: #10B981;">Log in to LegacyVault</a>
+    <p>You are not required to log in to LegacyVault to receive these documents, but you may optionally log in to access them securely at any time.</p>
   `);
   
-  return await sendEmail({ to: nomineeEmail, subject, html });
+  return await sendEmail({ to: nomineeEmail, subject, html, attachments });
+};
+
+export const sendSignupVerificationEmail = async (email, name, verificationUrl) => {
+  const subject = "Verify Your LegacyVault Account";
+  const html = generateEmailTemplate(`
+    <h3>Hello ${name},</h3>
+    <p>Thank you for registering an account on LegacyVault.</p>
+    <div class="info-box">
+      <p style="margin: 0;">Please click the button below to verify your email address and activate your account.</p>
+    </div>
+    <a href="${verificationUrl}" class="btn">Verify Email Address</a>
+  `);
+  return await sendEmail({ to: email, subject, html });
+};
+
+export const sendNomineeVerificationEmail = async (email, name, verificationUrl) => {
+  const subject = "LegacyVault Trusted Nominee Verification";
+  const html = generateEmailTemplate(`
+    <h3>Hello ${name},</h3>
+    <p>You have been added as a trusted nominee in LegacyVault.</p>
+    <div class="info-box border-warning">
+      <p style="margin: 0;">To confirm your registration, please verify your email address by clicking the button below.</p>
+    </div>
+    <a href="${verificationUrl}" class="btn">Verify Nominee Email</a>
+  `);
+  return await sendEmail({ to: email, subject, html });
+};
+
+export const sendPasswordResetEmail = async (email, name, resetUrl) => {
+  const subject = "LegacyVault Password Reset Request";
+  const html = generateEmailTemplate(`
+    <h3>Hello ${name},</h3>
+    <p>We received a request to reset the password for your LegacyVault account.</p>
+    <div class="info-box border-warning">
+      <p style="margin: 0 0 10px 0;">This reset link will expire in 30 minutes.</p>
+      <p style="margin: 0; color: #777;">If you did not request a password reset, you can safely ignore this email.</p>
+    </div>
+    <a href="${resetUrl}" class="btn">Reset Password</a>
+  `);
+  return await sendEmail({ to: email, subject, html });
 };
 
 // --- PRESERVE LEGACY ALERT FUNCTIONS SO UNRELATED CODE DOES NOT BREAK ---
@@ -253,40 +298,4 @@ export const sendNomineeNotification = async (nomineeEmail, nomineeName, ownerNa
   return await sendNomineeAvailabilityCheck(nomineeEmail, nomineeName, checkUrlAvailable, checkUrlAvailable);
 };
 
-export const sendAccessRequestedNotification = async (adminEmails, nomineeName, ownerName, assetTitle) => {
-  const subject = `LegacyVault Admin Alert: Access Requested by Nominee`;
-  const html = generateEmailTemplate(`
-    <h3>Admin Alert,</h3>
-    <p>Nominee <span class="highlight">${nomineeName}</span> has submitted a new access request.</p>
-    <div class="info-box border-warning">
-      <p style="margin: 0 0 5px 0;"><strong>Asset:</strong> <span class="highlight">${assetTitle}</span></p>
-      <p style="margin: 0;"><strong>Owner:</strong> <span class="highlight">${ownerName}</span></p>
-    </div>
-    <p>Please log in to the Admin Dashboard to review this request.</p>
-  `);
-  for (const adminEmail of adminEmails) {
-    try {
-      await sendEmail({ to: adminEmail, subject, html });
-    } catch (err) {}
-  }
-};
-
-export const sendAccessApprovedNotification = async (nomineeEmail, nomineeName, assetTitle, ownerName) => {
-  return await sendAssetReleaseNotification(nomineeEmail, nomineeName);
-};
-
-export const sendAccessRejectedNotification = async (nomineeEmail, nomineeName, assetTitle, ownerName, reason) => {
-  const subject = `LegacyVault Access Request: REJECTED`;
-  const html = generateEmailTemplate(`
-    <h3>Hello ${nomineeName},</h3>
-    <p>We regret to inform you that your request to access the asset below has been <span class="status-rejected">REJECTED</span> by the platform administrator.</p>
-    <div class="info-box border-rejected">
-      <p style="margin: 0 0 5px 0;"><strong>Asset:</strong> <span class="highlight">${assetTitle}</span></p>
-      <p style="margin: 0 0 10px 0;"><strong>Owner:</strong> <span class="highlight">${ownerName}</span></p>
-      <p style="margin: 0; padding-top: 10px; border-top: 1px solid #444; color: #EF4444;">
-        <strong>Reason:</strong> <em>${reason || "Verification details could not be validated."}</em>
-      </p>
-    </div>
-  `);
-  return await sendEmail({ to: nomineeEmail, subject, html });
-};
+// Obsolete access request notifications have been removed.

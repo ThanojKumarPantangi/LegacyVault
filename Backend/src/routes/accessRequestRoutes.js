@@ -1,6 +1,5 @@
 import express from "express";
 import {
-  createAccessRequest,
   getAccessRequests,
   getAccessRequestById,
 } from "../controllers/accessRequestController.js";
@@ -10,7 +9,7 @@ const router = express.Router();
 
 router.use(authenticate);
 
-router.post("/", createAccessRequest);
+// POST route for creating access request has been deprecated
 router.get("/", getAccessRequests);
 router.get("/:id", getAccessRequestById);
 

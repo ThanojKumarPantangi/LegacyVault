@@ -2,6 +2,9 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import * as authService from "../services/authService.js";
 import { logAuditEvent } from "../services/auditService.js";
 
+/**
+ * Initiates User Registration.
+ */
 export const register = asyncHandler(async (req, res) => {
   const { name, email, password, role } = req.body;
 
@@ -11,20 +14,102 @@ export const register = asyncHandler(async (req, res) => {
     throw err;
   }
 
-  const { user, token } = await authService.registerUser({
+  const result = await authService.registerUser({
     name,
     email,
     password,
     role,
   });
 
-  res.status(201).json({
+  res.status(200).json({
     success: true,
-    message: "Registration successful",
-    data: { user, token },
+    message: result.message,
   });
 });
 
+/**
+ * Verifies Signup Email.
+ */
+export const verifyEmail = asyncHandler(async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    const err = new Error("Verification token is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const result = await authService.verifyUserEmail(token);
+
+  res.status(200).json({
+    success: true,
+    message: result.message,
+  });
+});
+
+/**
+ * Resends Verification Email.
+ */
+export const resendVerificationEmail = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    const err = new Error("Email is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const result = await authService.resendVerification(email);
+
+  res.status(200).json({
+    success: true,
+    message: result.message,
+  });
+});
+
+/**
+ * Requests a Password Reset Link.
+ */
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    const err = new Error("Email is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const result = await authService.forgotPassword(email);
+
+  res.status(200).json({
+    success: true,
+    message: result.message,
+  });
+});
+
+/**
+ * Resets password.
+ */
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  if (!token || !newPassword) {
+    const err = new Error("Token and newPassword are required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const result = await authService.resetPassword(token, newPassword);
+
+  res.status(200).json({
+    success: true,
+    message: result.message,
+  });
+});
+
+/**
+ * Login handler.
+ */
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -53,6 +138,9 @@ export const login = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Logout handler.
+ */
 export const logout = asyncHandler(async (req, res) => {
   if (req.user) {
     await logAuditEvent({
@@ -71,6 +159,9 @@ export const logout = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Get profile handler.
+ */
 export const getMe = asyncHandler(async (req, res) => {
   const user = await authService.getUserProfile(req.user._id);
   res.status(200).json({

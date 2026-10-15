@@ -13,7 +13,7 @@ const Badge = ({ children, status = "default", className = "" }) => {
     verification_required: "bg-orange-500/10 text-orange-400 border border-orange-500/20",
     admin_review: "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20",
     nominee_requested: "bg-purple-500/10 text-purple-400 border border-purple-500/20",
-    default: "bg-slate-800 text-slate-300 border border-slate-700",
+    default: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
   };
 
   const currentStyle = statusStyles[status.toLowerCase()] || statusStyles.default;

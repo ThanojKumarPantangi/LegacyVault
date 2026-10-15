@@ -14,7 +14,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
   const nomineesCount = await Nominee.countDocuments();
   const policiesCount = await Policy.countDocuments();
   const pendingRequestsCount = await AccessRequest.countDocuments({
-    status: "ADMIN_REVIEW",
+    status: "APPROVED",
   });
   const verificationCasesCount = await VerificationCase.countDocuments();
 
@@ -47,33 +47,7 @@ export const getAccessRequests = asyncHandler(async (req, res) => {
   });
 });
 
-export const approveRequest = asyncHandler(async (req, res) => {
-  const request = await verificationService.reviewAccessRequest(
-    req.user._id,
-    req.params.id,
-    "APPROVE"
-  );
-  res.status(200).json({
-    success: true,
-    message: "Access request approved successfully.",
-    data: request,
-  });
-});
-
-export const rejectRequest = asyncHandler(async (req, res) => {
-  const { reason } = req.body;
-  const request = await verificationService.reviewAccessRequest(
-    req.user._id,
-    req.params.id,
-    "REJECT",
-    reason
-  );
-  res.status(200).json({
-    success: true,
-    message: "Access request rejected successfully.",
-    data: request,
-  });
-});
+// Legacy approve/reject request controllers have been removed as manual verification cases are automated.
 
 export const getAuditLogs = asyncHandler(async (req, res) => {
   const logs = await AuditLog.find()
@@ -88,14 +62,14 @@ export const getAuditLogs = asyncHandler(async (req, res) => {
 });
 
 export const simulateInactivity = asyncHandler(async (req, res) => {
-  // if (process.env.NODE_ENV === "production") {
-  //   const err = new Error(
-  //     "Simulation is disabled in production environments."
-  //   );
-  //   err.statusCode = 403;
-  //   err.errorCode = "SIMULATION_DISABLED";
-  //   throw err;
-  // }
+  if (process.env.NODE_ENV === "production") {
+    const err = new Error(
+      "Simulation is disabled in production environments."
+    );
+    err.statusCode = 403;
+    err.errorCode = "SIMULATION_DISABLED";
+    throw err;
+  }
 
   const {
     simulationStage,
@@ -133,14 +107,23 @@ export const simulateInactivity = asyncHandler(async (req, res) => {
     throw err;
   }
 
-  const user = await User.findOne({
-    email: email.toLowerCase().trim(),
-  });
+  /*
+   * ---------------------------------------------------------
+   * Find owner user for owner-related simulations only.
+   * ---------------------------------------------------------
+   */
+  let user = null;
 
-  if (!user) {
-    const err = new Error("User not found");
-    err.statusCode = 404;
-    throw err;
+  if (simulationStage !== "NOMINEE_RESPONSE_TIMEOUT") {
+    user = await User.findOne({
+      email: email.toLowerCase().trim(),
+    });
+
+    if (!user) {
+      const err = new Error("User not found");
+      err.statusCode = 404;
+      throw err;
+    }
   }
 
   /*
@@ -211,6 +194,7 @@ export const simulateInactivity = asyncHandler(async (req, res) => {
       throw err;
     }
 
+    // Force owner response deadline into the past.
     activeCase.ownerResponseDeadline = new Date(
       Date.now() - 1000
     );
@@ -230,6 +214,8 @@ export const simulateInactivity = asyncHandler(async (req, res) => {
         simulationStage,
         verificationCaseId: activeCase._id,
         status: activeCase.status,
+        ownerResponseDeadline:
+          activeCase.ownerResponseDeadline,
         triggered: result?.triggered ?? 0,
       },
     });
@@ -241,9 +227,14 @@ export const simulateInactivity = asyncHandler(async (req, res) => {
    * ---------------------------------------------------------
    */
   if (simulationStage === "NOMINEE_RESPONSE_TIMEOUT") {
-    // The email entered in the simulator is the NOMINEE's email.
+    /*
+     * The email entered in the simulator belongs to the nominee.
+     *
+     * According to the Nominee schema, the nominee has its own
+     * email field, so find the active nominee directly by email.
+     */
     const nominee = await Nominee.findOne({
-      nomineeUserId: user._id,
+      email: email.toLowerCase().trim(),
       status: "ACTIVE",
     });
 
@@ -255,6 +246,9 @@ export const simulateInactivity = asyncHandler(async (req, res) => {
       throw err;
     }
 
+    /*
+     * Find the pending nominee confirmation case.
+     */
     const activeCase = await VerificationCase.findOne({
       nomineeId: nominee._id,
       status: "NOMINEE_CONFIRMATION_PENDING",
@@ -268,12 +262,18 @@ export const simulateInactivity = asyncHandler(async (req, res) => {
       throw err;
     }
 
-    // Force nominee response deadline into the past.
-    activeCase.nomineeResponseDeadline = new Date(Date.now() - 1000);
+    /*
+     * Force nominee response deadline into the past.
+     */
+    activeCase.nomineeResponseDeadline = new Date(
+      Date.now() - 1000
+    );
 
     await activeCase.save();
 
-    // Process ONLY this owner's workflow.
+    /*
+     * Process ONLY this owner's workflow.
+     */
     const result =
       await verificationService.processInactiveUsers(
         activeCase.ownerId
@@ -287,10 +287,13 @@ export const simulateInactivity = asyncHandler(async (req, res) => {
         simulationStage,
         verificationCaseId: activeCase._id,
         nomineeId: nominee._id,
+        nomineeEmail: nominee.email,
+        ownerId: activeCase.ownerId,
         status: activeCase.status,
+        nomineeResponseDeadline:
+          activeCase.nomineeResponseDeadline,
         triggered: result?.triggered ?? 0,
       },
     });
   }
-  
 });

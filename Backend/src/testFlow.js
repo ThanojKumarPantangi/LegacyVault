@@ -7,6 +7,8 @@ import { Policy } from "./models/Policy.js";
 import { VerificationCase } from "./models/VerificationCase.js";
 import { AccessRequest } from "./models/AccessRequest.js";
 import { AuditLog } from "./models/AuditLog.js";
+import { PendingSignup } from "./models/PendingSignup.js";
+import { PasswordResetToken } from "./models/PasswordResetToken.js";
 
 // Services
 import { connectDB } from "./config/db.js";
@@ -34,7 +36,9 @@ const runTest = async () => {
   await connectDB();
 
   // Clean data
-  await User.deleteMany({ email: { $in: ["owner@test.com", "nominee@test.com", "other_nominee@test.com", "admin@legacy.com"] } });
+  await User.deleteMany({ email: { $in: ["owner@test.com", "nominee@test.com", "other_nominee@test.com", "admin@legacy.com", "recovery@test.com"] } });
+  await PendingSignup.deleteMany({ email: { $in: ["owner@test.com", "nominee@test.com", "other_nominee@test.com", "recovery@test.com"] } });
+  await PasswordResetToken.deleteMany({});
   await AuditLog.deleteMany({});
   await VerificationCase.deleteMany({});
   await AccessRequest.deleteMany({});
@@ -42,57 +46,92 @@ const runTest = async () => {
   await Nominee.deleteMany({});
   await Asset.deleteMany({});
 
-  // 2. Register accounts
+  // 2. Register accounts with verification
   console.log("\n[TEST] 1. Registering accounts...");
-  const ownerResult = await authService.registerUser({
+  
+  // Owner Registration
+  lastEmailSent = null;
+  await authService.registerUser({
     name: "Owner User",
     email: "owner@test.com",
     password: "Password123",
     role: "USER"
   });
-  const ownerId = ownerResult.user._id;
+  if (!lastEmailSent) throw new Error("Owner register email not sent");
+  const ownerRegToken = lastEmailSent.html.match(/token=([a-f0-9]+)/)[1];
+  await authService.verifyUserEmail(ownerRegToken);
+  const ownerLoginResult = await authService.loginUser({ email: "owner@test.com", password: "Password123" });
+  const ownerId = ownerLoginResult.user._id;
+  console.log(`  Owner user verified and created. ID: ${ownerId}`);
 
-  const nomineeResult = await authService.registerUser({
+  // Nominee User Registration
+  lastEmailSent = null;
+  await authService.registerUser({
     name: "Nominee User",
     email: "nominee@test.com",
     password: "Password123",
     role: "NOMINEE"
   });
-  const nomineeUserId = nomineeResult.user._id;
+  if (!lastEmailSent) throw new Error("Nominee register email not sent");
+  const nomineeRegToken = lastEmailSent.html.match(/token=([a-f0-9]+)/)[1];
+  await authService.verifyUserEmail(nomineeRegToken);
+  const nomineeLoginResult = await authService.loginUser({ email: "nominee@test.com", password: "Password123" });
+  const nomineeUserId = nomineeLoginResult.user._id;
+  console.log(`  Nominee user verified and created. ID: ${nomineeUserId}`);
 
-  const otherNomineeResult = await authService.registerUser({
+  // Other Nominee User Registration
+  lastEmailSent = null;
+  await authService.registerUser({
     name: "Other Nominee",
     email: "other_nominee@test.com",
     password: "Password123",
     role: "NOMINEE"
   });
-  const otherNomineeUserId = otherNomineeResult.user._id;
+  if (!lastEmailSent) throw new Error("Other Nominee register email not sent");
+  const otherNomineeRegToken = lastEmailSent.html.match(/token=([a-f0-9]+)/)[1];
+  await authService.verifyUserEmail(otherNomineeRegToken);
+  const otherNomineeLoginResult = await authService.loginUser({ email: "other_nominee@test.com", password: "Password123" });
+  const otherNomineeUserId = otherNomineeLoginResult.user._id;
+  console.log(`  Other Nominee user verified and created. ID: ${otherNomineeUserId}`);
 
   // 3. Create asset
   console.log("[TEST] 2. Depositing secure asset...");
   const asset = await assetService.createAsset(ownerId, {
-    title: "Crypto Wallet Wallet Credentials Key",
+    title: "Crypto Wallet Credentials Key",
     category: "DIGITAL_WALLET",
-    description: "Bitcoin seeds phrase credentials",
+    description: "Bitcoin seed phrase credentials",
     sensitiveData: "sapphire-creek-forest-gamma-bravo-12345"
   });
   const assetId = asset._id;
 
-  // 4. Map nominees
-  console.log("[TEST] 3. Adding nominees...");
+  // 4. Map nominees with verification
+  console.log("[TEST] 3. Adding and verifying nominees...");
+  
+  // Nominee 1
+  lastEmailSent = null;
   const nominee = await nomineeService.addNominee(ownerId, {
     name: "Nominee User",
     email: "nominee@test.com",
     relationship: "Sibling"
   });
+  if (!lastEmailSent) throw new Error("Nominee verification email not sent");
+  const nomineeVerifToken = lastEmailSent.html.match(/token=([a-f0-9]+)/)[1];
+  await nomineeService.verifyNomineeEmail(nomineeVerifToken);
   const nomineeId = nominee._id;
+  console.log(`  Nominee 1 verified and active.`);
 
+  // Nominee 2 (Other Nominee)
+  lastEmailSent = null;
   const otherNominee = await nomineeService.addNominee(ownerId, {
     name: "Other Nominee",
     email: "other_nominee@test.com",
     relationship: "Friend"
   });
+  if (!lastEmailSent) throw new Error("Other Nominee verification email not sent");
+  const otherNomineeVerifToken = lastEmailSent.html.match(/token=([a-f0-9]+)/)[1];
+  await nomineeService.verifyNomineeEmail(otherNomineeVerifToken);
   const otherNomineeId = otherNominee._id;
+  console.log(`  Nominee 2 verified and active.`);
 
   // 5. Create policy
   console.log("[TEST] 4. Activating policy...");
@@ -117,7 +156,7 @@ const runTest = async () => {
   console.log("\n[SCENARIO A] Owner availability response stops workflow...");
   await triggerInactivity();
   lastEmailSent = null;
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
   
   if (!lastEmailSent) throw new Error("Owner availability email not sent");
   const ownerTokenMatch = lastEmailSent.html.match(/token=([a-f0-9]+)/);
@@ -143,7 +182,7 @@ const runTest = async () => {
   console.log("\n[SCENARIO B] Owner login cancels escalation...");
   await VerificationCase.deleteMany({});
   await triggerInactivity();
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findOne({ policyId: policy._id });
   if (vCase.status !== "OWNER_CONFIRMATION_PENDING") throw new Error("Expected status OWNER_CONFIRMATION_PENDING");
@@ -161,16 +200,15 @@ const runTest = async () => {
   console.log("\n[SCENARIO C] Nominee responds owner is available...");
   await VerificationCase.deleteMany({});
   await triggerInactivity();
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findOne({ policyId: policy._id });
-  // Expire owner response deadline
   vCase.ownerResponseDeadline = new Date(Date.now() - 1000);
   await vCase.save();
 
   // Run scheduler to transition case
   lastEmailSent = null;
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findById(vCase._id);
   if (vCase.status !== "NOMINEE_CONFIRMATION_PENDING") throw new Error("Expected status NOMINEE_CONFIRMATION_PENDING");
@@ -197,14 +235,14 @@ const runTest = async () => {
   console.log("\n[SCENARIO D] Nominee responds owner is unavailable -> releases assets & repeated access...");
   await VerificationCase.deleteMany({});
   await triggerInactivity();
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findOne({ policyId: policy._id });
   vCase.ownerResponseDeadline = new Date(Date.now() - 1000);
   await vCase.save();
 
   lastEmailSent = null;
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   const nomineeTokenMatch2 = lastEmailSent.html.match(/token=([a-f0-9]+)/);
   const nomineeToken2 = nomineeTokenMatch2[1];
@@ -218,7 +256,7 @@ const runTest = async () => {
   if (vCase.status !== "RELEASED") throw new Error("Expected status RELEASED");
 
   // Verify email sent
-  if (!lastEmailSent || lastEmailSent.subject !== "LegacyVault Inheritance Release Authorized") {
+  if (!lastEmailSent || lastEmailSent.subject !== "LegacyVault — Your Inheritance Documents Have Been Released") {
     throw new Error("Release email notification was not sent correctly");
   }
 
@@ -244,19 +282,20 @@ const runTest = async () => {
   console.log("\n[SCENARIO E] Nominee response deadline expires -> automatic release...");
   await VerificationCase.deleteMany({});
   await AccessRequest.deleteMany({});
+  
   // Reactivate policy status to test new case
   const actPolicy = await Policy.findById(policy._id);
   actPolicy.status = "ACTIVE";
   await actPolicy.save();
 
   await triggerInactivity();
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findOne({ policyId: policy._id });
   vCase.ownerResponseDeadline = new Date(Date.now() - 1000);
   await vCase.save();
 
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findById(vCase._id);
   vCase.nomineeResponseDeadline = new Date(Date.now() - 1000);
@@ -264,13 +303,13 @@ const runTest = async () => {
 
   // Run inactivity process to trigger nominee deadline expiry
   lastEmailSent = null;
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findById(vCase._id);
   if (vCase.status !== "RELEASED") throw new Error("Expected case status to be RELEASED");
 
   // Verify email sent
-  if (!lastEmailSent || lastEmailSent.subject !== "LegacyVault Inheritance Release Authorized") {
+  if (!lastEmailSent || lastEmailSent.subject !== "LegacyVault — Your Inheritance Documents Have Been Released") {
     throw new Error("Release email was not sent on timeout");
   }
 
@@ -297,13 +336,16 @@ const runTest = async () => {
 
   console.log(">>> [SUCCESS] Scenario F passed.");
 
+  // ----------------------------------------------------
+  // Scenario G: Expired token response rejection
+  // ----------------------------------------------------
   console.log("\n[SCENARIO G] Expired token response rejection...");
   await VerificationCase.deleteMany({});
   const actPolicy2 = await Policy.findById(policy._id);
   actPolicy2.status = "ACTIVE";
   await actPolicy2.save();
   await triggerInactivity();
-  await verificationService.processInactiveUsers();
+  await verificationService.processInactiveUsers(ownerId);
 
   vCase = await VerificationCase.findOne({ policyId: policy._id });
   // Set owner deadline in past
@@ -325,6 +367,70 @@ const runTest = async () => {
   }
 
   console.log(">>> [SUCCESS] Scenario G passed.");
+
+  // ----------------------------------------------------
+  // Scenario H: Login recovery, resend, forgot, reset password
+  // ----------------------------------------------------
+  console.log("\n[SCENARIO H] Unverified signup recovery + Forgot/Reset Password...");
+  
+  // 1. Create a registration but don't verify
+  lastEmailSent = null;
+  await authService.registerUser({
+    name: "Recovery User",
+    email: "recovery@test.com",
+    password: "OldPassword123",
+    role: "USER"
+  });
+  if (!lastEmailSent) throw new Error("Recovery signup email not sent");
+  
+  // 2. Log in with unverified account -> throws EMAIL_NOT_VERIFIED and generates new token
+  try {
+    lastEmailSent = null;
+    await authService.loginUser({ email: "recovery@test.com", password: "OldPassword123" });
+    throw new Error("Allowed unverified user to login");
+  } catch (err) {
+    if (err.statusCode !== 400 || err.errorCode !== "EMAIL_NOT_VERIFIED") {
+      throw new Error(`Expected EMAIL_NOT_VERIFIED error, got: ${err.message}`);
+    }
+    console.log("  Successfully rejected unverified login and triggered recovery email (Correct)");
+  }
+  if (!lastEmailSent) throw new Error("Recovery email not resent on login");
+  
+  // 3. Test resend verification
+  // Move PendingSignup updatedAt into the past to bypass resend cooldown
+  await PendingSignup.updateOne(
+    { email: "recovery@test.com" },
+    { $set: { updatedAt: new Date(Date.now() - 120 * 1000) } },
+    { timestamps: false }
+  );
+
+  lastEmailSent = null;
+  await authService.resendVerification("recovery@test.com");
+  if (!lastEmailSent) throw new Error("Verification email not sent on resend");
+  const recoveryRegToken = lastEmailSent.html.match(/token=([a-f0-9]+)/)[1];
+  await authService.verifyUserEmail(recoveryRegToken);
+  
+  // 4. Log in successfully now
+  const verifiedLogin = await authService.loginUser({ email: "recovery@test.com", password: "OldPassword123" });
+  if (!verifiedLogin.user) throw new Error("Could not log in after verification");
+  console.log("  Successfully verified and logged in unverified account.");
+  
+  // 5. Test forgot password
+  lastEmailSent = null;
+  await authService.forgotPassword("recovery@test.com");
+  if (!lastEmailSent) throw new Error("Password reset email not sent");
+  const resetToken = lastEmailSent.html.match(/token=([a-f0-9]+)/)[1];
+  
+  // 6. Test reset password
+  await authService.resetPassword(resetToken, "NewPassword123");
+  console.log("  Password reset successful.");
+  
+  // 7. Verify login with new password
+  const newLogin = await authService.loginUser({ email: "recovery@test.com", password: "NewPassword123" });
+  if (!newLogin.user) throw new Error("Could not log in after password reset");
+  console.log("  Successfully logged in with new password.");
+  
+  console.log(">>> [SUCCESS] Scenario H passed.");
 
   console.log("\n====== LEGACYVAULT NEW E2E WORKFLOW TESTS PASSED ======");
   await mongoose.connection.close();

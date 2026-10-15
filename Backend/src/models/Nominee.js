@@ -32,7 +32,21 @@ const nomineeSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ["PENDING", "ACTIVE"],
-      default: "ACTIVE",
+      default: "PENDING",
+    },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerifiedAt: {
+      type: Date,
+    },
+    verificationTokenHash: {
+      type: String,
+      index: true,
+    },
+    verificationTokenExpiresAt: {
+      type: Date,
     },
   },
   {

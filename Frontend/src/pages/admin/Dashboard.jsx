@@ -93,11 +93,11 @@ const Dashboard = () => {
               return (
                 <div
                   key={card.name}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex items-center justify-between"
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex items-center justify-between transition-colors duration-200"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-slate-400">{card.name}</p>
-                    <p className="text-3xl font-extrabold text-white mt-2">{card.value}</p>
+                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{card.name}</p>
+                    <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">{card.value}</p>
                   </div>
                   <div className={`p-3 rounded-xl border ${card.color}`}>
                     <Icon className="w-5 h-5" />
@@ -109,18 +109,18 @@ const Dashboard = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Inactivity Simulation form */}
-            <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 transition-colors duration-200">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-lg">
                   <Play className="w-5 h-5" />
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-bold text-slate-100">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
                     Inheritance Workflow Simulator
                   </h3>
 
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     Safely simulate individual stages of the inheritance
                     verification workflow.
                   </p>
@@ -147,7 +147,7 @@ const Dashboard = () => {
                 <div>
                   <label
                     htmlFor="simulationStage"
-                    className="block text-xs font-semibold text-slate-400 mb-1.5"
+                    className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5"
                   >
                     Simulation Stage
                   </label>
@@ -157,7 +157,7 @@ const Dashboard = () => {
                     value={simulationStage}
                     onChange={(e) => setSimulationStage(e.target.value)}
                     required
-                    className="w-full px-4 py-2.5 text-sm bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="OWNER_INACTIVITY">
                       Initial Owner Inactivity
@@ -178,12 +178,16 @@ const Dashboard = () => {
                   <Input
                     label={
                       simulationStage === "NOMINEE_RESPONSE_TIMEOUT"
-                        ? "Asset Owner Email Address"
+                        ? "Nominee Email Address"
                         : "Asset Owner Email Address"
                     }
                     id="simEmail"
                     type="email"
-                    placeholder="owner@test.com"
+                    placeholder={
+                      simulationStage === "NOMINEE_RESPONSE_TIMEOUT"
+                        ? "nominee@test.com"
+                        : "owner@test.com"
+                    }
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -223,12 +227,12 @@ const Dashboard = () => {
             </div>
 
             {/* Admin notes */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <h3 className="text-base font-bold text-slate-100 mb-3">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 transition-colors duration-200">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-3">
                 Verification Rules
               </h3>
 
-              <ul className="text-xs text-slate-400 space-y-2.5 list-disc pl-4 leading-relaxed">
+              <ul className="text-xs text-slate-650 dark:text-slate-400 space-y-2.5 list-disc pl-4 leading-relaxed">
                 <li>
                   <strong>Initial Owner Inactivity:</strong> moves the
                   owner's <code>lastActiveAt</code> into the past and

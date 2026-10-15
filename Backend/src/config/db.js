@@ -79,6 +79,45 @@ export const connectDB = async () => {
         }
       }
       console.log("[DATABASE] Completed startup migration for legacy AccessRequests.");
+
+      // Migration for legacy users
+      const { User } = await import("../models/User.js");
+      const unmigratedUsersCount = await User.countDocuments({ emailVerified: { $exists: false } });
+      if (unmigratedUsersCount > 0) {
+        console.log(`[DATABASE MIGRATION] Migrating ${unmigratedUsersCount} legacy users to have emailVerified: true...`);
+        await User.updateMany(
+          { emailVerified: { $exists: false } },
+          { $set: { emailVerified: true, emailVerifiedAt: new Date() } }
+        );
+      }
+
+      // Migration for legacy nominees
+      const { Nominee } = await import("../models/Nominee.js");
+      const unmigratedActiveNomineesCount = await Nominee.countDocuments({
+        $or: [ { nomineeUserId: { $exists: true, $ne: null } }, { status: "ACTIVE" } ],
+        emailVerified: { $exists: false }
+      });
+      if (unmigratedActiveNomineesCount > 0) {
+        console.log(`[DATABASE MIGRATION] Migrating ${unmigratedActiveNomineesCount} active/linked legacy nominees to emailVerified: true...`);
+        await Nominee.updateMany(
+          {
+            $or: [ { nomineeUserId: { $exists: true, $ne: null } }, { status: "ACTIVE" } ],
+            emailVerified: { $exists: false }
+          },
+          { $set: { emailVerified: true, status: "ACTIVE" } }
+        );
+      }
+
+      const unmigratedPendingNomineesCount = await Nominee.countDocuments({ emailVerified: { $exists: false } });
+      if (unmigratedPendingNomineesCount > 0) {
+        console.log(`[DATABASE MIGRATION] Migrating ${unmigratedPendingNomineesCount} pending legacy nominees to emailVerified: false...`);
+        await Nominee.updateMany(
+          { emailVerified: { $exists: false } },
+          { $set: { emailVerified: false, status: "PENDING" } }
+        );
+      }
+
+      console.log("[DATABASE] Completed startup migration for users and nominees.");
     } catch (migError) {
       console.error("[DATABASE MIGRATION ERROR] Failed legacy migration:", migError.message);
     }

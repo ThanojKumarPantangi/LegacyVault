@@ -38,29 +38,7 @@ export const fetchAccessRequests = createAsyncThunk(
   }
 );
 
-export const approveAccessRequest = createAsyncThunk(
-  "admin/approveAccessRequest",
-  async (requestId, { rejectWithValue }) => {
-    try {
-      const response = await apiClient.post(`/admin/access-requests/${requestId}/approve`);
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const rejectAccessRequest = createAsyncThunk(
-  "admin/rejectAccessRequest",
-  async ({ requestId, reason }, { rejectWithValue }) => {
-    try {
-      const response = await apiClient.post(`/admin/access-requests/${requestId}/reject`, { reason });
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
+// Manual review and approval thunks have been removed as this is now automated.
 
 export const fetchAuditLogs = createAsyncThunk(
   "admin/fetchAuditLogs",
@@ -155,36 +133,7 @@ const adminSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      // Approve Request
-      .addCase(approveAccessRequest.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(approveAccessRequest.fulfilled, (state, action) => {
-        state.loading = false;
-        state.requests = state.requests.map((req) =>
-          req._id === action.payload._id ? action.payload : req
-        );
-      })
-      .addCase(approveAccessRequest.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
-      // Reject Request
-      .addCase(rejectAccessRequest.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(rejectAccessRequest.fulfilled, (state, action) => {
-        state.loading = false;
-        state.requests = state.requests.map((req) =>
-          req._id === action.payload._id ? action.payload : req
-        );
-      })
-      .addCase(rejectAccessRequest.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
+      // Legacy approve/reject reducers have been removed.
       // Fetch Audit Logs
       .addCase(fetchAuditLogs.pending, (state) => {
         state.loading = true;

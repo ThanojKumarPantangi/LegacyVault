@@ -22,12 +22,20 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["USER", "NOMINEE", "ADMIN"],
+      enum: ["USER", "ADMIN"],
       default: "USER",
     },
     lastActiveAt: {
       type: Date,
       default: Date.now,
+    },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    emailVerifiedAt: {
+      type: Date,
     },
   },
   {
@@ -38,6 +46,9 @@ const userSchema = new mongoose.Schema(
 // Encrypt password before saving
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
+    return;
+  }
+  if (this.password && (this.password.startsWith("$2b$") || this.password.startsWith("$2a$"))) {
     return;
   }
   const salt = await bcrypt.genSalt(10);
